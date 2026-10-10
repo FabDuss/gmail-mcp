@@ -148,6 +148,8 @@ const inlineImageSchema = z.object({
 });
 type InlineImageArg = z.infer<typeof inlineImageSchema>;
 
+const SEND_TOOLS = new Set(["send_message", "send_draft", "reply_all", "forward_message"]);
+
 export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
 		name: "Gmail MCP",
@@ -800,6 +802,16 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// leaves the object uninitialised and the owner's next request starts it
 		// with their own grant, rather than every call failing until eviction.
 		const account = (await this.ownerProps()).email;
+
+		// Tools that put mail on the wire. They are registered only when the
+		// deployment sets ALLOW_SEND=true, so a default deployment can read,
+		// search, label and write drafts but cannot send, reply or forward.
+		const sendEnabled = (this.env as { ALLOW_SEND?: string }).ALLOW_SEND === "true";
+		const registerTool = this.server.tool.bind(this.server) as (...args: unknown[]) => unknown;
+		(this.server as { tool: unknown }).tool = (name: string, ...rest: unknown[]) => {
+			if (SEND_TOOLS.has(name) && !sendEnabled) return undefined;
+			return registerTool(name, ...rest);
+		};
 
 		this.server.tool(
 			"whoami",
