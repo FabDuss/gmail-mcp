@@ -70,7 +70,7 @@ function makeAgent(email = "me@example.com") {
 			},
 		},
 	};
-	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" };
+	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", ALLOW_SEND: "true" };
 	return { agent, handlers, storage };
 }
 
@@ -1258,5 +1258,29 @@ describe("forwarding a long message", () => {
 		);
 		expect(carried).toContain("Paragraph 299:");
 		expect(carried).not.toContain("truncated:");
+	});
+});
+
+describe("sending is off unless the deployment enables it", () => {
+	const SENDING = ["send_message", "send_draft", "reply_all", "forward_message"];
+
+	test("without ALLOW_SEND the four sending tools are not registered and drafts still are", async () => {
+		const made = makeAgent();
+		(made.agent as { env: Record<string, string> }).env = {
+			GOOGLE_CLIENT_ID: "id",
+			GOOGLE_CLIENT_SECRET: "secret",
+		};
+		await (made.agent as { init: () => Promise<void> }).init();
+		for (const name of SENDING) expect(made.handlers.has(name)).toBe(false);
+		for (const name of ["create_draft", "update_draft", "search_messages", "get_message"]) {
+			expect(made.handlers.has(name)).toBe(true);
+		}
+		expect(made.handlers.size).toBe(23);
+	});
+
+	test("with ALLOW_SEND=true all 27 tools are registered", async () => {
+		const made = await boot();
+		for (const name of SENDING) expect(made.handlers.has(name)).toBe(true);
+		expect(made.handlers.size).toBe(27);
 	});
 });
