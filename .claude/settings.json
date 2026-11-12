@@ -1,0 +1,107 @@
+{
+  "worktree": {
+    "baseRef": "head"
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2",
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "900000",
+    "CLAUDE_AUTO_BACKGROUND_TASKS": "0",
+    "CAIRN_SETTINGS": "1",
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "40"
+  },
+  "permissions": {
+    "deny": [
+      "Edit(**/.claude/agents/**)",
+      "Edit(**/.claude/skills/**)",
+      "Edit(**/.claude/settings.json)",
+      "Edit(**/.claude/settings.local.json)",
+      "Edit(**/.claude/CLAUDE.md)",
+      "Edit(**/.claude/.gitignore)",
+      "Edit(**/.claude/commands/**)",
+      "Edit(**/.claude/hooks/**)",
+      "Edit(**/.claude/output-styles/**)",
+      "Edit(**/.mcp.json)",
+      "Edit(**/.git/**)",
+      "Bash(git push --force)",
+      "PowerShell(git push --force)",
+      "Bash(git push --force *)",
+      "PowerShell(git push --force *)",
+      "Bash(git push -f)",
+      "PowerShell(git push -f)",
+      "Bash(git push -f *)",
+      "PowerShell(git push -f *)",
+      "Bash(git reset --hard)",
+      "PowerShell(git reset --hard)",
+      "Bash(git reset --hard *)",
+      "PowerShell(git reset --hard *)",
+      "Bash(git push * --force*)",
+      "PowerShell(git push * --force*)",
+      "Bash(git push * -f*)",
+      "PowerShell(git push * -f*)",
+      "Bash(git push *--force-with-lease*)",
+      "PowerShell(git push *--force-with-lease*)",
+      "Bash(git push *+*)",
+      "PowerShell(git push *+*)",
+      "Bash(git branch -D *)",
+      "PowerShell(git branch -D *)",
+      "Bash(git branch -d *)",
+      "PowerShell(git branch -d *)",
+      "Bash(git push * --delete*)",
+      "PowerShell(git push * --delete*)",
+      "Bash(git push * -d *)",
+      "PowerShell(git push * -d *)",
+      "Bash(git push * :**)",
+      "PowerShell(git push * :**)",
+      "Bash(git -C * push *)",
+      "PowerShell(git -C * push *)",
+      "Bash(git clean *)",
+      "PowerShell(git clean *)",
+      "Bash(git update-ref *)",
+      "PowerShell(git update-ref *)",
+      "Bash(git push --delete *)",
+      "PowerShell(git push --delete *)",
+      "Bash(git push -d *)",
+      "PowerShell(git push -d *)",
+      "Bash(git push * -d)",
+      "PowerShell(git push * -d)",
+      "Bash(git push *--prune*)",
+      "PowerShell(git push *--prune*)",
+      "Bash(git push *--mirror*)",
+      "PowerShell(git push *--mirror*)",
+      "Bash(git branch --delete *)",
+      "PowerShell(git branch --delete *)",
+      "Bash(npx *)",
+      "PowerShell(npx *)",
+      "Bash(npm exec *)",
+      "PowerShell(npm exec *)",
+      "Bash(npm x *)",
+      "PowerShell(npm x *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/cairn-session-start.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/cairn-session-start.sh\"; fi",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "in=$(cat)\nfield() { printf '%s' \"$in\" | grep -oE \"\\\"$1\\\" *: *\\\"[^\\\"]*\\\"\" | head -n 1 | sed -E 's/.*\"([^\"]*)\"$/\\1/'; }\nif [ \"$(field tool_name)\" = SendMessage ]; then\n  tp=$(field transcript_path)\n  role=$(grep -oE '\"agentType\" *: *\"[^\"]*\"' \"${tp%.jsonl}/subagents/agent-$(field to).meta.json\" 2>/dev/null | head -n 1 | sed -E 's/.*\"([^\"]*)\"$/\\1/')\n  what='resume'\nelse\n  role=$(field subagent_type)\n  what='run'\nfi\ncase \"$role\" in architect|planner|coder|judge|hardener) ;; *) exit 0 ;; esac\ncd \"$CLAUDE_PROJECT_DIR\" || exit 0\ndir=''\nfor d in $( { printf '%s' \"$in\" | grep -oE '\\.cairn/[A-Za-z0-9._-]+/'; printf '%s' \"$in\" | grep -oE 'EPIC-[0-9]+' | sed 's#.*#.cairn/&/#'; } | sort -u); do\n  if ls \"$d\"epic.*.md >/dev/null 2>&1; then dir=$d; break; fi\ndone\nif [ -z \"$dir\" ]; then echo \"Cairn: this $role $what names no epic whose folder .cairn/<id>/ holds an epic file. Give the epic and the unit's file in the prompt or the message, as the session skill says.\" >&2; exit 2; fi\nn=$(grep -rhcE '^## .* · (architect|planner|coder|judge|hardener) · ' \"$dir\" | awk '{s+=$1} END {print s+0}')\ngo=$(grep -hoE \"^Pilot's go: .*role entries, at [0-9]+\" \"$dir\"epic.*.md | grep -oE '[0-9]+$' | sort -n | tail -n 1)\nnext=$(( (${go:-0} / 120 + 1) * 120 ))\nif [ \"$n\" -lt \"$next\" ]; then exit 0; fi\necho \"Cairn: the epic $dir counts $n role entries, and no Pilot's go covers the bound at $next. Launch or resume nothing on the epic: tell the pilot what was spent and what still fails, and land their go in the epic file as CHECKS.md says, its first line reading: Pilot's go: 120 role entries, at $(( n / 120 * 120 ))\" >&2\nexit 2",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
