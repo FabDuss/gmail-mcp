@@ -200,3 +200,4 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Questions created: Q-001, Q-002, Q-003 in round 1; Q-004, Q-005, Q-006, Q-007 in round 2.
 - NEEDs touched: NEED-001 to NEED-008 created.
 - Drafts: none created or added to. No other open draft existed to fold in.
+- Confirmation: the pilot confirmed the intent with "je confirme, go".

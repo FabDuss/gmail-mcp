@@ -1,8 +1,8 @@
 # EPIC-001 Send safeguards and revocation docs
 
-- State: draft
+- State: confirmed
 - Last invocation: 0
-- Confirmed: no
+- Confirmed: 2026-11-12
 - Origin: the security audit and the architecture critique of the whole repository that the pilot asked for on 2026-11-12, outside any epic, at main 84e427c. No originating epic.
 
 ## Intention
