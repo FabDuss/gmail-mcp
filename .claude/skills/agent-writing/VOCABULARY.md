@@ -1,0 +1,79 @@
+# Cairn vocabulary
+
+Use these names exactly, in every skill, prompt and artifact. One concept has one name: no translation, no synonym (prose rule 11). Some of them are leading words the model already knows: tracer bullet, seam, footprint, fog, draft, core first, verbatim. Each entry names the term and says what it is in one sentence; the rules live where the spec puts them. This list projects the spec's glossary entry for entry, and is regenerated whenever that glossary changes.
+
+- **acceptance test**: the test of a NEED, written by the work-package that closes it.
+- **ADR**: an architecture decision recorded in `docs/adr/`, written by the architect from a DEC that is hard to reverse.
+- **architecture critique**: the subagent that proposes, at the closing review or on the whole repository at the pilot's request, what would make the modules deeper.
+- **barrier**: the moment a plan is validated: its work-packages hardened, main entered, the observation accepted.
+- **barrier commit**: the commit that closes a plan's barrier.
+- **baseline**: the test failures that predate the work in progress, and that do not block the gates.
+- **brief**: the first entry of a work-package file, written by the planner: everything the coder and the judge need.
+- **Cairn**: the harness this vocabulary belongs to: its roles, skills and settings, in the repository's `.claude/`.
+- **closing fix**: a TASK that carries out a proposal of the closing review that the pilot fixes in the epic.
+- **closing review**: what the session leads at the last barrier, beside the observation.
+- **coder note**: the coder's entry.
+- **compare-and-swap**: a write that succeeds only if nothing changed since the read; for Cairn, a push without force.
+- **concept**: a word of the pilot matched with a concept of the code.
+- **core**: what validates the epic and what is most uncertain; the first plan goes at it.
+- **DEC**: a decision recorded in `design.md`.
+- **destination**: the first question of the tree, which sets the reach of the epic.
+- **DoD** (Definition of Done): for a TASK, the checkable sentences that say when it is done.
+- **domain glossary**: `CONTEXT.md`, the terms specific to the project, written by the architect.
+- **draft**: an epic with the status `draft`, whose intent stops at the intention and its origin.
+- **entry**: what a run or the session appends at the end of an epic or work-package file.
+- **epic**: the whole feature, with its branch `epic/<id>/main`.
+- **epic file**: `.cairn/<id>/epic.<status>.md`, the epic's status in its name.
+- **exemplar module**: the existing module the architect names as the model of form.
+- **FACT**: an observed fact, with its source, its commit or date, and its certainty.
+- **fix work-package**: a work-package the planner opens outside the composition of the plan, by the table in tracer-bullet.
+- **fog**: the areas sensed during ideation, coarser than a question.
+- **footprint**: the files a work-package may touch, set in its brief.
+- **gap report**: what the planner sends back to the architect when the design does not assemble.
+- **gates**: the checks a role passes before it lands code.
+- **hardener report**: the hardener's entries: its list of mutants, then each one's fate.
+- **hardening**: the hardener's mutation pass on a validated work-package.
+- **ideation**: the first move of an epic, where the session refines the need with the pilot.
+- **intent**: `intent.md`, what converged during ideation: intention, concepts, NEEDs, out of scope.
+- **invocation**: one numbered pass of ideation; a re-invocation reopens a branch of the tree.
+- **landing**: a run reaching the epic branch, done by the role itself.
+- **last barrier**: the barrier of a plan whose `plan.md` leaves no TASK; it carries the closing review.
+- **lever**: a rearrangement of existing code that cuts the epic's TASKs without changing behaviour.
+- **mechanical TASK**: a TASK that adds or changes no decision in the code.
+- **mutant**: a plausible change of behaviour, played then removed.
+- **mutant player**: the subagent that plays one mutant for the hardener.
+- **NEED**: a criterion of the intent, scenario or threshold, closed when its TASKs are validated.
+- **opening work-package**: the thinnest slice through the core, launched first.
+- **out of scope**: a subject dismissed during ideation.
+- **out of work-package**: what a work-package must not do, stated in its brief.
+- **pilot**: the human, who talks only to the session.
+- **plan**: a stage of the epic, between two barriers.
+- **prototype**: throwaway code that answers a question of ideation.
+- **Q**: a question of the tree.
+- **questionnaire**: the questions for the pilot when he cannot answer live.
+- **resolver**: the planner, when it takes up a run whose landing could not go through, or a merge of main in conflict.
+- **review pack**: what comes with the PR, so that a reviewer can judge without opening the artifacts.
+- **role**: a specialised subagent: architect, planner, coder, judge or hardener.
+- **rulebook**: what the coder and the judge load identically; the judge cites nothing else.
+- **run**: one execution of a role, from its launch to its landing.
+- **satellites**: what is not the core.
+- **scout**: the skill that has a fact searched by Explore.
+- **seam**: the junction between two modules, where a contract passes.
+- **session**: the conversation with the pilot, which leads the epic.
+- **shape rule**: the readability rule for code that the coder and the judge share.
+- **sketch**: the interfaces, types and empty bodies the planner lands for a plan.
+- **skill**: a craft loaded by the roles that need it.
+- **slice**: what a vertical work-package crosses, from its entry to what one observes.
+- **slice test**: the test a work-package that adds a behaviour writes.
+- **status**: the state of an epic or a work-package, a word in its file name.
+- **TASK**: a coherent change, at the grain of the architecture, with its DoD.
+- **tracer bullet**: vertical slicing, core first, whose first slice is the opening work-package.
+- **tree**: `intent.tree.md`, the memory of ideation: questions, facts, fog and verbatims.
+- **trivial work-package**: a work-package whose TASKs are all mechanical; it skips hardening.
+- **verbatim**: the pilot's words, as said, in the tree only.
+- **verdict**: the judge's entry, DoD line by DoD line.
+- **wait**: the status `blocked` of a work-package or an epic, addressed to the owner of what must change.
+- **wide change**: a change that reaches too many callers for a vertical slice, carried out in three stages.
+- **work-package** (WP): one or more whole TASKs, committable, with a checkable behaviour.
+- **work-package file**: `WP-xxx.<status>.md`, in its plan's folder, the work-package's status in its name.
+- **worktree**: the working copy of a run, a player or a prototype, under `.claude/worktrees/`.
