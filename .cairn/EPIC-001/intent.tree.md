@@ -349,6 +349,22 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: ran.
 - Used by: TASK-006, Impact.
 
+### FACT-028 The CI count check passes at the epic head
+
+- Observed: `python3 scripts/check-counts.py`, the command of the CI step "Tool and test counts match the source", printed "ok   tool and test counts match the source" and exited 0. Between 739a49d and this head, the files outside `.cairn/` differ only in nine lines of the three READMEs, each turning 253 into 275 in a test-count claim.
+- Source: `scripts/check-counts.py`, run from the clone as the CI step runs it; `git diff 739a49d HEAD -- README.md README.ja.md README.zh.md`.
+- Commit: 7e7678a.
+- Certainty: observed.
+- Used by: NEED-009, barrier of PLAN-002-test-count.
+
+### FACT-029 The revocation and ALLOW_SEND text and the server code are unchanged since 739a49d
+
+- Observed: `git diff --quiet 739a49d HEAD -- src test worker-configuration.d.ts wrangler.jsonc` succeeds. In each of the three READMEs a search finds 0 lines naming the client secret, 1 line with myaccount.google.com/connections, 3 lines with `ALLOW_SEND` and the badge `badge/tools-27`, as at 739a49d (FACT-025, FACT-026). The server code and its tests are the code observed for FACT-023.
+- Source: the three README files and `git diff`.
+- Commit: 7e7678a.
+- Certainty: observed.
+- Used by: NEED-001 to NEED-008, barrier of PLAN-002-test-count.
+
 ## Invocations
 
 ### Invocation 0
