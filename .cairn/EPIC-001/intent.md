@@ -1,7 +1,7 @@
 # EPIC-001 Send safeguards and revocation docs
 
 - State: confirmed
-- Last invocation: 0
+- Last invocation: 1
 - Confirmed: 2026-11-12
 - Origin: the security audit and the architecture critique of the whole repository that the pilot asked for on 2026-11-12, outside any epic, at main 84e427c. No originating epic.
 
@@ -64,6 +64,11 @@ A person who connects an MCP client to this server gets a client that knows whic
 - Given the README, its two translations and `docs/index.html`, when a reader looks at the tool count, then it says 27 and that the four sending tools exist only with `ALLOW_SEND=true`. The README documents `ALLOW_SEND`: off unless set to exactly `true`.
 - Questions: Q-006, Q-003.
 
+### NEED-009 The docs state the test count the suite runs
+
+- Given the README, its two translations and the commit that carries them, when the CI step "Tool and test counts match the source" runs, then no test-count claim in them differs from the number of tests the suite runs.
+- Questions: Q-008.
+
 ## Constraint NEEDs
 
 None.
@@ -72,7 +77,6 @@ None.
 
 - A server-side check on sending, such as a recipient allowlist or a confirmation asked by the server. Q-001.
 - A way to cut every grant at once. Q-005, with Q-002.
-- The test count advertised in the README. Dropped from the fog in round 2.
 - The other proposals of the audit and the critique, rejected by the pilot before this draft opened.
 
 ## Questions for the architect
@@ -85,3 +89,4 @@ None.
 ## Revisions
 
 - Invocation 0: NEED-001 to NEED-008 created.
+- Invocation 1: NEED-009 created, from the closing review of PLAN-001.

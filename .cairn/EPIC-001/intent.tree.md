@@ -9,6 +9,7 @@
 - Q-005 The revocation text: decided, option A, remove the claim from the three READMEs.
 - Q-006 The advertised tool count: decided, option A, keep 27, say four need ALLOW_SEND, document ALLOW_SEND.
 - Q-007 Sending refused while off: decided, option A, sending tools absent and every send refused while off.
+- Q-008 The advertised test count: decided at the closing review, fix it in this epic.
 
 ## Fog
 
@@ -116,6 +117,19 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - State: decided. The rejected options lost for the reasons the recommendation gives.
 - Follows: NEED-004, NEED-005, NEED-006.
 - Invocation: 0.
+
+### Q-008 The advertised test count
+
+- Depends on: FACT-004, FACT-009, FACT-023.
+- Regime: converging.
+- Nature: need.
+- Resolution: conversation.
+- Question: the fog item dropped in round 2 came back at the closing review of PLAN-001. The three READMEs claim 253 tests while the suite runs 275 at 739a49d, and the CI step "Tool and test counts match the source" fails on those claims, so the epic's PR would show it red. Options: A. fix the claims in this epic; B. leave them, as round 2 decided.
+- Recommendation: A. It is one run of `scripts/check-counts.py --fix` on files the epic already changes, and it keeps the PR's CI green.
+- Pilot's answer: "J accepte tes recommandations"
+- State: decided. B was rejected because the PR would carry a red CI step.
+- Follows: NEED-009.
+- Invocation: 1.
 
 ## Facts
 
@@ -337,3 +351,12 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - NEEDs touched: NEED-001 to NEED-008 created.
 - Drafts: none created or added to. No other open draft existed to fold in.
 - Confirmation: the pilot confirmed the intent with "je confirme, go".
+
+### Invocation 1
+
+- Trigger: the pilot's decision at the closing review of PLAN-001 to fix the test-count claims in this epic, on 2026-11-15.
+- Who: session, with the pilot.
+- Questions reopened: the round 2 fog item on stale counts, as Q-008.
+- NEEDs touched: NEED-009 created.
+- Drafts: none created or added to.
+- Confirmation: the pilot gave the decision with "J accepte tes recommandations".

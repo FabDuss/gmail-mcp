@@ -68,3 +68,7 @@ The pilot accepted the observation and the session's closing recommendations wit
 - Handler tests through the in-process MCP client (the critique's proposal): rejected.
 - Moving the 27 tool handlers out of `GmailMCP.init` by kind (the architect's rearrangement): rejected.
 - The test-count claims of the three READMEs: fixed in this epic. The session sends it to the architect by `confirmed`, after a re-invocation of the intent, since the intent had it out of scope.
+
+## 2026-11-15T14:15Z · session · confirmed
+
+Invocation 1 of ideation, from the pilot's closing decision to fix the test-count claims in this epic, as a change asked on the PR. Q-008 decided, NEED-009 created, and the out-of-scope line on the test count removed. The known red of `baseline.md` on those claims is now the epic's work. The architect serves NEED-009.
