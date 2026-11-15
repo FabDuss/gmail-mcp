@@ -1,0 +1,1 @@
+- scripts/check-counts.py, test-count claims in README.md, README.ja.md and README.zh.md (253 claimed, 255 run) · known red · 84e427c
