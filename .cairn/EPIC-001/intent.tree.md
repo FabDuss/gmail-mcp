@@ -295,6 +295,38 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: read in the code; the two paths ran.
 - Used by: WP-002H.
 
+### FACT-023 The Worker at the epic head starts and refuses MCP without a grant
+
+- Observed: `wrangler dev --port 8799 --ip 127.0.0.1 --persist-to <scratch>` with placeholder Google client values and `ALLOW_SEND` unset logged "Ready on http://127.0.0.1:8799". `GET /` answered 200. `POST /mcp` with a `tools/list` request and no bearer answered 401 `{"error":"invalid_token","error_description":"Missing or invalid access token"}`. Listing the tools or calling one needs a grant from a Google sign-in, which this environment cannot complete: it holds no Google OAuth client and no Google account. So the session did not observe NEED-001 to NEED-006.
+- Source: the Worker started by `wrangler dev`, routes `/` and `/mcp`.
+- Commit: 739a49d.
+- Certainty: observed in the running app.
+- Used by: NEED-001 to NEED-006, barrier of PLAN-001-send-safeguards.
+
+### FACT-024 The landing page says four tools need ALLOW_SEND
+
+- Observed: a headless Chromium opened `http://127.0.0.1:8799/` and read the pills "27 tools", "4 of them need ALLOW_SEND=true", "OAuth 2.1 + PKCE", "multi-account", "scope gmail.modify", "MIT", and the line "Four of the 27 tools, send_message, reply_all, forward_message and send_draft, exist only when ALLOW_SEND is exactly true. Set it as a Worker secret with wrangler secret put ALLOW_SEND; drafts work without it."
+- Source: route `/` of the Worker started for FACT-023.
+- Commit: 739a49d.
+- Certainty: observed in the running app.
+- Used by: NEED-008, barrier of PLAN-001-send-safeguards.
+
+### FACT-025 The three READMEs give only the two working revocation paths
+
+- Observed: a case-insensitive search for "client secret", "クライアントシークレット" and "客户端密钥" finds 0 lines in `README.md`, `README.ja.md` and `README.zh.md`. The withdrawal item at `README.md:300`, `README.ja.md:284` and `README.zh.md:284` names narrowing `ALLOWED_EMAILS` and revoking at myaccount.google.com/connections.
+- Source: the three README files, read as a reader does.
+- Commit: 739a49d.
+- Certainty: read in the files.
+- Used by: NEED-007, barrier of PLAN-001-send-safeguards.
+
+### FACT-026 The three READMEs state 27 tools and document ALLOW_SEND
+
+- Observed: the tool badge reads 27 at `README.md:15`, `README.ja.md:7` and `README.zh.md:7`. A footnote at `README.md:169`, `README.ja.md:157` and `README.zh.md:157` says the four sending tools exist only with `ALLOW_SEND=true` and, in English and Chinese, that the server otherwise offers the other 23. A section at `README.md:260`, `README.ja.md:248` and `README.zh.md:248` says sending is off unless `ALLOW_SEND` is exactly `true`, and that it is set with `wrangler secret put ALLOW_SEND`.
+- Source: the three README files, read as a reader does.
+- Commit: 739a49d.
+- Certainty: read in the files.
+- Used by: NEED-008, barrier of PLAN-001-send-safeguards.
+
 ## Invocations
 
 ### Invocation 0
