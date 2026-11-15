@@ -10,10 +10,13 @@ The epic's only plan: every TASK can be sketched now, and no part waits on anoth
 | WP-002 No sending request reaches Gmail while sending is off | WP-001 at `validated` | after WP-001 |
 | WP-003 The READMEs and the landing page state working revocation paths, 27 tools and ALLOW_SEND | none | alongside WP-001 |
 | WP-001H A client lists each tool with its own description, its own input schema, and no hint beyond the two of its kind | WP-002 at `validated` | fix work-package of WP-001, after WP-002 |
+| WP-002H A send is refused for ALLOW_SEND even when the owner check or the rate limiter would refuse it, and only the exact send paths count as sending | WP-001H at `validated` | fix work-package of WP-002, after WP-001H |
 
 WP-002 depends on WP-001 for two reasons: both write the session agent and the handler tests (rule 8), and WP-002 reads the sending decision and the harness that WP-001 fills.
 
 WP-001H takes WP-001's footprint, which shares the session agent and the handler tests with WP-002 (rule 8).
+
+WP-002H takes WP-002's footprint, which shares the session agent and the handler tests with WP-001H (rule 8).
 
 ## NEEDs closed
 

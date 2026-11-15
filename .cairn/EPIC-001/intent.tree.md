@@ -287,6 +287,14 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: read in the files; the effect on private members is the documented behaviour of `noUnusedLocals`.
 - Used by: the sketch of PLAN-001, which declares its two methods of `GmailMCP` as `protected` and prefixes its unread parameters with `_`.
 
+### FACT-022 What the handler tests' harness can make refuse ahead of the Gmail fetch
+
+- Observed: in `GmailMCP.api`, the refusal of sending comes first, then `assertSessionOwner`, then `assertWithinRate`. `assertSessionOwner` throws "this MCP session belongs to a different Google account" when storage's `owner` names an account other than the caller's; the harness's storage is the `Map` that `makeAgent` returns as `storage`, and the tests of "session ownership" set it. `assertWithinRate` returns at once when `env.RATE_LIMITER` is unset, and otherwise calls `limit({ key })` and throws "rate limit reached for this account; retry shortly" when it answers `success: false`. The harness's `env` sets no `RATE_LIMITER`, and no test stands one up. The helper `bootThenTurnSendingOff` replaces the agent's `env` by assignment, with no cast. Neither check fetches anything. Under bun, `new URL` keeps the path `/messages/%E0%A4%A` as written and `decodeURIComponent` of its pathname throws `URIError`; `/messages/sendfoo` resolves to `/gmail/v1/users/me/messages/sendfoo`.
+- Source: `src/index.ts:226-256,327-335,377-383`; `test/handlers.test.ts:48-87,143-181,1374-1394`; a one-line `bun -e` on the two paths.
+- Commit: bbaf8d7; bun 1.4.4.
+- Certainty: read in the code; the two paths ran.
+- Used by: WP-002H.
+
 ## Invocations
 
 ### Invocation 0
