@@ -31,3 +31,19 @@ PLAN-001 Send safeguards and revocation docs, the epic's only plan, with its ske
 The sketch adds `ToolKind`, `GmailMCP.sendingIsOn` and `GmailMCP.registerByKind` in the session agent, and `isSendingPath` in the Gmail module, all with empty bodies and wired to nothing. It pulls in only two types of the SDK already installed, as the Impact announced. FACT-020 shows the registration method keeps each handler's argument types, the design's most uncertain point; FACT-021 explains why the two methods are `protected`.
 
 Gates on the sketch: `bun run check` passes, with the six complexity warnings that predate the epic; `bun test` ran 255 tests, 255 pass; `scripts/check-counts.py` prints no failing line about tools, and fails its test count lines, 253 claimed against 255, the known red of FACT-004.
+
+## 2026-11-15T13:07Z · session · planned
+
+Architecture critique of the epic's diff at 739a49d, closing review of PLAN-001-send-safeguards. Its proposals, without its Rejected section:
+
+### Make the session agent's handler tests go through the in-process MCP client instead of the hand-written fake of `registerTool`
+
+- Modules: the session agent `GmailMCP` and its handler test harness `makeAgent` / `tool(handlers, …)` in `test/handlers.test.ts`; the seam between `registerByKind` and the SDK's `McpServer`.
+- Friction: the harness replaces `McpServer` with a fake that keeps only the handler (`test/handlers.test.ts:60-63` drops `_config`), so the 43 handler tests never touch a tool's input schema, its defaults, its description or its annotations. WP-001's mutation pass (78f2e6e) killed no test when the schema of all 27 tools was replaced with `{}`. `test/handlers.test.ts:215` passes by hand the `maxResults: 10` default that the schema sets at `src/index.ts:867`. The fake also copies the SDK's call form, so the diff rewrote it when production moved to `registerTool`. A real `McpServer` over `InMemoryTransport` already runs in the suite (`connectClient`, `test/handlers.test.ts:1282-1289`).
+- Deepening: the handler tests call tools as a client does, through the in-process client against a real `McpServer`, keeping the existing stand-ins for storage, props, env and Gmail's `fetch`. The fake and the direct handler lookup go.
+- Gives: each tool's schema, defaults, description, annotations and handler are checked by the test of its behaviour, and the tests stop moving with the SDK's registration call.
+
+Beside it, for the closing review:
+
+- The architect's rearrangement in its `designed` entry: move the 27 tool handlers out of `GmailMCP.init` into modules by kind.
+- The test-count claims of the three READMEs, out of scope since round 2 of ideation and known red in `baseline.md` (253 claimed, 275 run at 739a49d). The CI step "Tool and test counts match the source" fails on them.
