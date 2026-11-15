@@ -115,6 +115,7 @@
   <p class="tagline">Your Gmail accounts, served to any MCP client, from your own Cloudflare Worker. Roughly ten minutes to deploy.</p>
   <div class="pills">
     <span class="pill">27 tools</span>
+    <span class="pill">4 of them need ALLOW_SEND=true</span>
     <span class="pill">OAuth 2.1 + PKCE</span>
     <span class="pill">multi-account</span>
     <span class="pill">scope gmail.modify</span>
@@ -196,6 +197,8 @@ claude mcp add --transport http gmail-work     https://&lt;your-host&gt;/mcp/wor
 <div class="checkline"><span>✓</span><span><b>Read</b> — search with Gmail operators, read messages and threads, download attachments</span></div>
 <div class="checkline"><span>✓</span><span><b>Compose</b> — send, reply to everyone with quoting, full draft lifecycle, attachments and inline images</span></div>
 <div class="checkline"><span>✓</span><span><b>Organize</b> — labels including nested ones, batch changes over many messages, reversible trash</span></div>
+
+<div class="note">Four of the 27 tools, <code>send_message</code>, <code>reply_all</code>, <code>forward_message</code> and <code>send_draft</code>, exist only when <code>ALLOW_SEND</code> is exactly <code>true</code>. Set it as a Worker secret with <code>wrangler secret put ALLOW_SEND</code>; drafts work without it.</div>
 
 <p>Japanese, Chinese, emoji, and right-to-left text survive the round trip: subjects and filenames are RFC 2047 encoded, bodies carry their declared charset.</p>
 

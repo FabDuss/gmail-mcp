@@ -125,12 +125,12 @@ claude mcp add --transport http gmail-work     https://<你的主机名>/mcp/wor
 </td>
 <td>
 
-`send_message`<br>
-`reply_all`<br>
-`forward_message`<br>
+`send_message` †<br>
+`reply_all` †<br>
+`forward_message` †<br>
 `create_draft`<br>
 `update_draft`<br>
-`send_draft`<br>
+`send_draft` †<br>
 `delete_draft`<br>
 `list_drafts`<br>
 `stage_attachment_begin`<br>
@@ -153,6 +153,8 @@ claude mcp add --transport http gmail-work     https://<你的主机名>/mcp/wor
 </td>
 </tr>
 </table>
+
+† 这四个发送工具只有在`ALLOW_SEND=true`时才存在，详见[能否发送](#能否发送)。未设置时，服务器只提供其余的23个。
 
 邮件结构和普通邮件客户端的一样：纯文本附一份HTML替代版本，文件附件，以`cid:`引用的内嵌图片，整体嵌套成`multipart/mixed › multipart/related › multipart/alternative`。主题和显示名用RFC 2047编码，文件名用RFC 2231，日文、中文、emoji都能完整送达。
 
@@ -241,6 +243,20 @@ Gmail本身用原生`fetch`直接调[REST API](https://developers.google.com/wor
 
 ---
 
+## 能否发送
+
+由`ALLOW_SEND`决定四个发送工具是否存在。只有它恰好等于`true`时才能发送；设成其他任何值，或者不设，`send_message`、`reply_all`、`forward_message`和`send_draft`都不会注册，服务器只提供23个工具。
+
+| 值 | 发送 |
+| :-- | :-- |
+| *(未设置)* | 关闭 |
+| `true` | 开启 |
+| 其他任何值，包括`TRUE`和`1` | 关闭 |
+
+用`wrangler secret put ALLOW_SEND`把它设为Worker的secret。部署不会删除secret，所以一旦开启，之后每次部署发送都保持开启。无论是否设置，都可以创建和编辑草稿，只有发送才需要这项设置。
+
+---
+
 ## 限制
 
 两个上限防止共用的部署被耗尽，都在`wrangler.jsonc`里配置：
@@ -265,7 +281,7 @@ Workers的**Free**方案还有一条上限：单次执行最多50个对外请求
 - **一个会话，一个邮箱**。MCP会话绑定在开启它的账号上，一个邮箱的授权没法借着别处拿来的会话ID去操作另一个邮箱。
 - **scope从简。** `gmail.modify`涵盖读取、发送、标签和回收站，不含永久删除，也不含`gmail.settings.*`。自动转发规则、暗中转投邮件的过滤器，这两条经典邮箱后门，被盗的授权两样都够不到。另外还会申请`userinfo.email`和`userinfo.profile`，两个都是只读的，用来确认登录的是哪个账号，再和允许名单核对、把会话绑到这个账号上。它们碰不到邮件。
 - **信头夹带不进去**。所有出站信头的值只要含CR、LF或NUL就会被拒绝，参数没法越出自己的字段去追加一个信头，比如在主题里塞一个`Bcc`。媒体类型会校验，引用的原文会做HTML转义。但这不管参数本身：`bcc`是正经参数，模型如果听了正文里藏的指令，还是可能填进去，这一层由客户端的确认弹窗来把关。
-- **撤销有效**。收紧`ALLOWED_EMAILS`可以挡住新登录，在[myaccount.google.com/connections](https://myaccount.google.com/connections)撤销应用授权，或者轮换Google客户端密钥让所有授权一次失效。
+- **撤销有效**。收紧`ALLOWED_EMAILS`可以挡住新登录，在[myaccount.google.com/connections](https://myaccount.google.com/connections)撤销应用授权。
 
 Worker在处理请求期间会在内存里解密邮件，任何托管中继都得这样。如果某个邮箱连这一点都不能接受，就单独给它跑一个本地MCP服务器。
 

@@ -137,12 +137,12 @@ Your deployment serves this guide at `https://<your-host>/`.
 </td>
 <td>
 
-`send_message`<br>
-`reply_all`<br>
-`forward_message`<br>
+`send_message` †<br>
+`reply_all` †<br>
+`forward_message` †<br>
 `create_draft`<br>
 `update_draft`<br>
-`send_draft`<br>
+`send_draft` †<br>
 `delete_draft`<br>
 `list_drafts`<br>
 `stage_attachment_begin`<br>
@@ -165,6 +165,8 @@ Your deployment serves this guide at `https://<your-host>/`.
 </td>
 </tr>
 </table>
+
+† The four sending tools exist only with `ALLOW_SEND=true`; see [Whether it can send](#whether-it-can-send). Without it the server offers the other 23.
 
 Messages leave the way a mail client sends them: plain text with an HTML alternative, file attachments, and inline images referenced by `cid:`, nested as `multipart/mixed › multipart/related › multipart/alternative`. Subjects and display names use RFC 2047, filenames use RFC 2231, so Japanese, Chinese, and emoji survive the trip.
 
@@ -253,6 +255,20 @@ Each grant reaches only the mailbox that authenticated it, so widening this list
 
 ---
 
+## Whether it can send
+
+`ALLOW_SEND` decides whether the four sending tools exist. Sending is off unless it is exactly `true`; any other value, or none, leaves `send_message`, `reply_all`, `forward_message` and `send_draft` unregistered, and the server then offers 23 tools.
+
+| Value | Sending |
+| :-- | :-- |
+| *(unset)* | off |
+| `true` | on |
+| anything else, `TRUE` and `1` included | off |
+
+Set it as a Worker secret with `wrangler secret put ALLOW_SEND`. A deploy never deletes a secret, so sending stays on across deploys once you turn it on. Drafts can be created and edited either way; only sending needs the setting.
+
+---
+
 ## Limits
 
 Two ceilings keep a shared deployment from being drained, both set in `wrangler.jsonc`:
@@ -281,8 +297,7 @@ Self-hosting moves the trust question rather than removing it, so here is where 
 - **One session, one mailbox.** The MCP session is bound to the account that opened it, so a grant for one mailbox cannot act on another through a borrowed session id.
 - **Scope minimalism.** `gmail.modify` covers reading, sending, labels, and trash. It excludes permanent deletion and all of `gmail.settings.*`, keeping auto-forwarding rules and filter exfiltration — the classic mailbox backdoors — outside what any stolen grant could do. Two read-only scopes are requested alongside it, `userinfo.email` and `userinfo.profile`: they are how the allowlist and the session binding know which account signed in, and they reach no mail.
 - **Headers cannot be smuggled.** Every outgoing header value is rejected if it contains CR, LF or NUL, so no argument can break out of its own field to append one — a `Bcc` inside a subject line, say. Media types are validated, and quoted history is HTML-escaped. What this does not do is police the arguments themselves: `bcc` is a real parameter, so a model acting on an instruction hidden in a message body could still fill it in, and your client's approval prompt remains the check on that.
-- **Access can be withdrawn.** Narrowing `ALLOWED_EMAILS` stops new sign-ins. A single account's access is revoked at [myaccount.google.com/connections](https://myaccount.google.com/connections). Rotating the Google client secret invalidates every grant at once.
-
+- **Access can be withdrawn.** Narrowing `ALLOWED_EMAILS` stops new sign-ins. A single account's access is revoked at [myaccount.google.com/connections](https://myaccount.google.com/connections).
 The Worker decrypts mail in memory while serving a request, as any hosted relay must. If that is unacceptable for a particular mailbox, run a local MCP server for that one.
 
 ---
