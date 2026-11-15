@@ -105,3 +105,7 @@ Observed at 7e7678a.
 - NEED-009 The docs state the test count the suite runs: holds, observed by the session. FACT-028
 
 The pilot accepted the observation with "J accepte". No closing item is open: the decisions of the PLAN-001 barrier stand.
+
+## 2026-11-15T15:07Z · session · delivered
+
+PR opened ready to main, with the review pack as its description: https://github.com/FabDuss/gmail-mcp/pull/2. The pilot merges.
