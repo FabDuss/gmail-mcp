@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import "./runtime-shim";
 
 const { GmailMCP, default: worker } = await import("../src/index");
@@ -42,13 +45,23 @@ function serveGmail(routes: [RegExp, Route][]) {
 	}) as unknown as typeof fetch;
 }
 
-function makeAgent(email = "me@example.com") {
+function makeAgent({
+	email = "me@example.com",
+	server,
+	env = { ALLOW_SEND: "true" },
+}: {
+	email?: string | undefined;
+	server?: McpServer;
+	env?: Record<string, string>;
+} = {}) {
 	const handlers = new Map<string, Handler>();
 	const storage = new Map<string, unknown>();
 	const agent = Object.create(GmailMCP.prototype) as Record<string, unknown>;
-	agent.server = {
-		tool: (name: string, _d: string, _s: unknown, cb: Handler) => handlers.set(name, cb),
-	};
+	agent.server =
+		server ??
+		({
+			registerTool: (name: string, _config: unknown, cb: Handler) => handlers.set(name, cb),
+		} satisfies Record<string, unknown>);
 	agent.props = {
 		email,
 		name: "Tester",
@@ -70,14 +83,18 @@ function makeAgent(email = "me@example.com") {
 			},
 		},
 	};
-	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", ALLOW_SEND: "true" };
+	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", ...env };
 	return { agent, handlers, storage };
 }
 
-async function boot(email?: string) {
-	const made = makeAgent(email);
+/** Runs the agent's start, which registers its tools. */
+async function start(made: ReturnType<typeof makeAgent>) {
 	await (made.agent as { init: () => Promise<void> }).init();
 	return made;
+}
+
+async function boot(email?: string) {
+	return start(makeAgent({ email }));
 }
 
 /** A handler that must exist, so a missing one fails loudly rather than quietly. */
@@ -169,7 +186,7 @@ describe("a session started by the wrong grant", () => {
 	// not own the session must not be the one to do it: otherwise the owner's
 	// own calls fail for as long as the object lives.
 	test("refuses to start, and starts for the owner afterwards", async () => {
-		const made = makeAgent("intruder@example.com");
+		const made = makeAgent({ email: "intruder@example.com" });
 		made.storage.set("owner", "owner@example.com");
 		await expect((made.agent as { init: () => Promise<void> }).init()).rejects.toThrow(
 			/different Google account/,
@@ -1261,26 +1278,233 @@ describe("forwarding a long message", () => {
 	});
 });
 
-describe("sending is off unless the deployment enables it", () => {
-	const SENDING = ["send_message", "send_draft", "reply_all", "forward_message"];
+/** What a client connected to the agent in process sees when it lists the tools. */
+async function connectClient(env: Record<string, string>) {
+	const server = new McpServer({ name: "Gmail MCP", version: "0.0.0" });
+	await start(makeAgent({ server, env }));
+	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: "test client", version: "0.0.0" });
+	await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+	return client;
+}
 
-	test("without ALLOW_SEND the four sending tools are not registered and drafts still are", async () => {
-		const made = makeAgent();
-		(made.agent as { env: Record<string, string> }).env = {
-			GOOGLE_CLIENT_ID: "id",
-			GOOGLE_CLIENT_SECRET: "secret",
-		};
-		await (made.agent as { init: () => Promise<void> }).init();
-		for (const name of SENDING) expect(made.handlers.has(name)).toBe(false);
-		for (const name of ["create_draft", "update_draft", "search_messages", "get_message"]) {
-			expect(made.handlers.has(name)).toBe(true);
+async function listTools(env: Record<string, string>) {
+	const client = await connectClient(env);
+	const { tools } = await client.listTools();
+	await client.close();
+	return tools;
+}
+
+const READ_TOOLS = [
+	"whoami",
+	"search_messages",
+	"get_message",
+	"get_thread",
+	"list_labels",
+	"list_drafts",
+	"get_attachment",
+];
+const UNDOABLE_WRITES = [
+	"modify_labels",
+	"modify_thread_labels",
+	"batch_modify_messages",
+	"create_draft",
+	"update_draft",
+	"untrash_message",
+	"untrash_thread",
+	"create_label",
+	"update_label",
+	"stage_attachment_begin",
+	"stage_attachment_append",
+	"stage_attachment_finish",
+];
+const DESTRUCTIVE_TOOLS = ["trash_message", "trash_thread", "delete_draft", "delete_label"];
+const SENDING = ["send_message", "send_draft", "reply_all", "forward_message"];
+
+describe("a client lists the tools with the annotations of their kind", () => {
+	const annotationsOf = (tools: Awaited<ReturnType<typeof listTools>>, name: string) =>
+		tools.find((t) => t.name === name)?.annotations;
+
+	test("each read tool is marked read-only", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of READ_TOOLS) {
+			expect(annotationsOf(tools, name)?.readOnlyHint).toBe(true);
 		}
-		expect(made.handlers.size).toBe(23);
 	});
 
-	test("with ALLOW_SEND=true all 27 tools are registered", async () => {
+	test("each undoable write is marked neither read-only nor destructive", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of UNDOABLE_WRITES) {
+			const annotations = annotationsOf(tools, name);
+			expect(annotations?.readOnlyHint).toBe(false);
+			expect(annotations?.destructiveHint).toBe(false);
+		}
+	});
+
+	test("each destructive and sending tool is marked destructive, written out", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of [...DESTRUCTIVE_TOOLS, ...SENDING]) {
+			const annotations = annotationsOf(tools, name);
+			expect(annotations?.readOnlyHint).toBe(false);
+			expect(annotations?.destructiveHint).toBe(true);
+		}
+	});
+
+	test("each undoable write carries exactly those two hints", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of UNDOABLE_WRITES) {
+			expect(annotationsOf(tools, name)).toEqual({ readOnlyHint: false, destructiveHint: false });
+		}
+	});
+
+	test("no tool carries an idempotent or open-world hint", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(tools).toHaveLength(27);
+		for (const tool of tools) {
+			expect(tool.annotations).not.toHaveProperty("idempotentHint");
+			expect(tool.annotations).not.toHaveProperty("openWorldHint");
+		}
+	});
+});
+
+describe("a client lists each tool with its own description and input schema", () => {
+	const find = (tools: Awaited<ReturnType<typeof listTools>>, name: string) =>
+		tools.find((t) => t.name === name);
+
+	test("whoami and list_labels each list their own description", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(find(tools, "whoami")?.description).toBe(
+			"Show which Gmail account this connection is bound to (me@example.com)",
+		);
+		expect(find(tools, "list_labels")?.description).toBe("List labels in me@example.com");
+	});
+
+	test("search_messages lists an input schema that requires query, and whoami lists an empty one", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(find(tools, "search_messages")?.inputSchema.required).toEqual(["query"]);
+		expect(find(tools, "whoami")?.inputSchema.properties ?? {}).toEqual({});
+	});
+
+	test("a call of search_messages without query is refused", async () => {
+		const client = await connectClient({ ALLOW_SEND: "true" });
+		const reply = await client.callTool({ name: "search_messages", arguments: {} });
+		await client.close();
+		expect(reply.isError).toBe(true);
+		expect(JSON.stringify(reply.content)).toContain("Invalid arguments for tool search_messages");
+	});
+});
+
+describe("sending is off unless the deployment enables it", () => {
+	test("without ALLOW_SEND the four sending tools are not listed and drafts still are", async () => {
+		const tools = await listTools({});
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).not.toContain(name);
+		for (const name of ["create_draft", "update_draft", "search_messages", "get_message"]) {
+			expect(names).toContain(name);
+		}
+		expect(tools).toHaveLength(23);
+	});
+
+	test("ALLOW_SEND=True is sending off", async () => {
+		const tools = await listTools({ ALLOW_SEND: "True" });
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).not.toContain(name);
+		expect(tools).toHaveLength(23);
+	});
+
+	test("with ALLOW_SEND=true all 27 tools are listed", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).toContain(name);
+		expect(tools).toHaveLength(27);
+	});
+});
+
+describe("a sending tool called while sending is off", () => {
+	/**
+	 * Registers every tool while sending is on, then has the deployment's setting
+	 * read off, with a token already past its expiry so that a refresh would show.
+	 */
+	async function bootThenTurnSendingOff(extraEnv: Record<string, unknown> = {}) {
 		const made = await boot();
-		for (const name of SENDING) expect(made.handlers.has(name)).toBe(true);
-		expect(made.handlers.size).toBe(27);
+		made.agent.env = {
+			GOOGLE_CLIENT_ID: "id",
+			GOOGLE_CLIENT_SECRET: "secret",
+			ALLOW_SEND: "false",
+			...extraEnv,
+		};
+		made.agent.props = {
+			email: "me@example.com",
+			name: "Tester",
+			accessToken: "access-token",
+			refreshToken: "refresh-token",
+			expiresAt: 0,
+		};
+		return made;
+	}
+
+	test("send_message is refused with an error naming ALLOW_SEND, and nothing is requested", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused with an error naming ALLOW_SEND, and nothing is requested", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	const exhaustedLimiter = { limit: async () => ({ success: false }) };
+
+	test("send_message is refused for ALLOW_SEND, not the rate limit, when the rate limiter is exhausted", async () => {
+		const { handlers } = await bootThenTurnSendingOff({ RATE_LIMITER: exhaustedLimiter });
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused for ALLOW_SEND, not the rate limit, when the rate limiter is exhausted", async () => {
+		const { handlers } = await bootThenTurnSendingOff({ RATE_LIMITER: exhaustedLimiter });
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_message is refused for ALLOW_SEND, not the session owner, when another account owns the session", async () => {
+		const { handlers, storage } = await bootThenTurnSendingOff();
+		storage.set("owner", "someone-else@example.com");
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused for ALLOW_SEND, not the session owner, when another account owns the session", async () => {
+		const { handlers, storage } = await bootThenTurnSendingOff();
+		storage.set("owner", "someone-else@example.com");
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("create_draft still posts its draft to Gmail", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([
+			[/\/profile/, () => ({ emailAddress: "me@example.com" })],
+			[/\/drafts$/, () => ({ id: "d1", message: { id: "dm1" } })],
+			[/oauth2\.googleapis\.com\/token/, () => ({ access_token: "fresh", expires_in: 3600 })],
+		]);
+		await tool(handlers, "create_draft")({ to: "a@example.com", subject: "s", body: "b" });
+		expect(
+			requests.some((r) => r.method === "POST" && r.url.endsWith("/gmail/v1/users/me/drafts")),
+		).toBe(true);
 	});
 });

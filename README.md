@@ -13,7 +13,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-6E56CF)](https://modelcontextprotocol.io/)
 [![OAuth 2.1](https://img.shields.io/badge/auth-OAuth_2.1_+_PKCE-2ea44f)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1)
 [![27 tools](https://img.shields.io/badge/tools-27-0b7285)](#what-it-can-do)
-[![tests](https://img.shields.io/badge/tests-253_passing-success?logo=bun&logoColor=white)](#how-it-was-tested)
+[![tests](https://img.shields.io/badge/tests-275_passing-success?logo=bun&logoColor=white)](#how-it-was-tested)
 
 *[日本語版](./README.ja.md) · [简体中文](./README.zh.md)*
 
@@ -137,12 +137,12 @@ Your deployment serves this guide at `https://<your-host>/`.
 </td>
 <td>
 
-`send_message`<br>
-`reply_all`<br>
-`forward_message`<br>
+`send_message` †<br>
+`reply_all` †<br>
+`forward_message` †<br>
 `create_draft`<br>
 `update_draft`<br>
-`send_draft`<br>
+`send_draft` †<br>
 `delete_draft`<br>
 `list_drafts`<br>
 `stage_attachment_begin`<br>
@@ -165,6 +165,8 @@ Your deployment serves this guide at `https://<your-host>/`.
 </td>
 </tr>
 </table>
+
+† The four sending tools exist only with `ALLOW_SEND=true`; see [Whether it can send](#whether-it-can-send). Without it the server offers the other 23.
 
 Messages leave the way a mail client sends them: plain text with an HTML alternative, file attachments, and inline images referenced by `cid:`, nested as `multipart/mixed › multipart/related › multipart/alternative`. Subjects and display names use RFC 2047, filenames use RFC 2231, so Japanese, Chinese, and emoji survive the trip.
 
@@ -253,6 +255,20 @@ Each grant reaches only the mailbox that authenticated it, so widening this list
 
 ---
 
+## Whether it can send
+
+`ALLOW_SEND` decides whether the four sending tools exist. Sending is off unless it is exactly `true`; any other value, or none, leaves `send_message`, `reply_all`, `forward_message` and `send_draft` unregistered, and the server then offers 23 tools.
+
+| Value | Sending |
+| :-- | :-- |
+| *(unset)* | off |
+| `true` | on |
+| anything else, `TRUE` and `1` included | off |
+
+Set it as a Worker secret with `wrangler secret put ALLOW_SEND`. A deploy never deletes a secret, so sending stays on across deploys once you turn it on. Drafts can be created and edited either way; only sending needs the setting.
+
+---
+
 ## Limits
 
 Two ceilings keep a shared deployment from being drained, both set in `wrangler.jsonc`:
@@ -281,7 +297,7 @@ Self-hosting moves the trust question rather than removing it, so here is where 
 - **One session, one mailbox.** The MCP session is bound to the account that opened it, so a grant for one mailbox cannot act on another through a borrowed session id.
 - **Scope minimalism.** `gmail.modify` covers reading, sending, labels, and trash. It excludes permanent deletion and all of `gmail.settings.*`, keeping auto-forwarding rules and filter exfiltration — the classic mailbox backdoors — outside what any stolen grant could do. Two read-only scopes are requested alongside it, `userinfo.email` and `userinfo.profile`: they are how the allowlist and the session binding know which account signed in, and they reach no mail.
 - **Headers cannot be smuggled.** Every outgoing header value is rejected if it contains CR, LF or NUL, so no argument can break out of its own field to append one — a `Bcc` inside a subject line, say. Media types are validated, and quoted history is HTML-escaped. What this does not do is police the arguments themselves: `bcc` is a real parameter, so a model acting on an instruction hidden in a message body could still fill it in, and your client's approval prompt remains the check on that.
-- **Access can be withdrawn.** Narrowing `ALLOWED_EMAILS` stops new sign-ins. A single account's access is revoked at [myaccount.google.com/connections](https://myaccount.google.com/connections). Rotating the Google client secret invalidates every grant at once.
+- **Access can be withdrawn.** Narrowing `ALLOWED_EMAILS` stops new sign-ins. A single account's access is revoked at [myaccount.google.com/connections](https://myaccount.google.com/connections).
 
 The Worker decrypts mail in memory while serving a request, as any hosted relay must. If that is unacceptable for a particular mailbox, run a local MCP server for that one.
 
@@ -289,7 +305,7 @@ The Worker decrypts mail in memory while serving a request, as any hosted relay 
 
 ## How it was tested
 
-253 unit tests cover message construction (MIME nesting, RFC 2047 folding, RFC 2231 filenames, CR/LF rejection, base64 wrapping), body extraction across charsets, reply and forward composition, the Google token flows, the sign-in allowlist, the CSRF and state-binding checks that guard the browser side of sign-in, and the tools themselves against a stand-in Gmail — session ownership, recipient composition, attachment selection, and what a partly-failed read returns.
+275 unit tests cover message construction (MIME nesting, RFC 2047 folding, RFC 2231 filenames, CR/LF rejection, base64 wrapping), body extraction across charsets, reply and forward composition, the Google token flows, the sign-in allowlist, the CSRF and state-binding checks that guard the browser side of sign-in, and the tools themselves against a stand-in Gmail — session ownership, recipient composition, attachment selection, and what a partly-failed read returns.
 
 Beyond that, every tool has run against real Gmail accounts, with a separate account checking what arrived:
 
@@ -309,7 +325,7 @@ Beyond that, every tool has run against real Gmail accounts, with a separate acc
 ```sh
 bun run dev     # wrangler dev on :8788
 bun run check   # biome + tsc
-bun test        # 253 unit tests
+bun test        # 275 unit tests
 bun run assets  # regenerate the light and dark diagrams
 bun run deploy
 ```

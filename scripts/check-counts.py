@@ -30,7 +30,7 @@ TOOL_CLAIMS = [r"badge/tools-(\d+)-"]
 
 def actual_tools() -> int:
     source = (ROOT / "src" / "index.ts").read_text(encoding="utf-8")
-    return len(re.findall(r"this\.server\.tool\(", source))
+    return len(re.findall(r"this\.registerByKind\(", source))
 
 
 def actual_tests() -> int:

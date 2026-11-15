@@ -8,6 +8,7 @@ interface __BaseEnv_Env {
 	GOOGLE_CLIENT_SECRET: string;
 	COOKIE_ENCRYPTION_KEY: string;
 	ALLOWED_EMAILS: string;
+	ALLOW_SEND: string;
 	MCP_OBJECT: DurableObjectNamespace<import("./src/index").GmailMCP>;
 	RATE_LIMITER: RateLimit;
 	REGISTER_LIMITER: RateLimit;
@@ -24,7 +25,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MAX_ACCOUNTS" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "COOKIE_ENCRYPTION_KEY" | "ALLOWED_EMAILS">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MAX_ACCOUNTS" | "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "COOKIE_ENCRYPTION_KEY" | "ALLOWED_EMAILS" | "ALLOW_SEND">> {}
 }
 declare module "*.html" {
 	const value: string;

@@ -5,7 +5,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-6E56CF)](https://modelcontextprotocol.io/)
 [![OAuth 2.1](https://img.shields.io/badge/auth-OAuth_2.1_+_PKCE-2ea44f)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1)
 [![27 tools](https://img.shields.io/badge/tools-27-0b7285)](#-できること)
-[![tests](https://img.shields.io/badge/tests-253_passing-success?logo=bun&logoColor=white)](#-テスト)
+[![tests](https://img.shields.io/badge/tests-275_passing-success?logo=bun&logoColor=white)](#-テスト)
 
 *[English README](./README.md) · [简体中文](./README.zh.md)*
 
@@ -125,12 +125,12 @@ Claude Codeでは`/mcp`を実行し、接続ごとに対応するGoogleアカウ
 </td>
 <td>
 
-`send_message`<br>
-`reply_all`<br>
-`forward_message`<br>
+`send_message` †<br>
+`reply_all` †<br>
+`forward_message` †<br>
 `create_draft`<br>
 `update_draft`<br>
-`send_draft`<br>
+`send_draft` †<br>
 `delete_draft`<br>
 `list_drafts`<br>
 `stage_attachment_begin`<br>
@@ -153,6 +153,8 @@ Claude Codeでは`/mcp`を実行し、接続ごとに対応するGoogleアカウ
 </td>
 </tr>
 </table>
+
+† 送信ツール4つは`ALLOW_SEND=true`のときだけ存在します。詳しくは[送信を許可するか](#-送信を許可するか)をご覧ください。設定がなければ、サーバーが提供するのは残りの23個です。
 
 送信するメールの構造は、通常のメールクライアントが組み立てるものと同じです。プレーンテキストにHTML版を添え、ファイルを添付し、`cid:`で参照するインライン画像を埋め込みます。入れ子は`multipart/mixed › multipart/related › multipart/alternative`になります。件名と表示名はRFC 2047、ファイル名はRFC 2231で符号化するので、日本語、中国語、絵文字も文字化けせずに送受信できます。
 
@@ -241,6 +243,20 @@ Gmailへのアクセスには[REST API](https://developers.google.com/workspace/
 
 ---
 
+## 📨 送信を許可するか
+
+`ALLOW_SEND`で指定します。送信ツール4つ(`send_message`、`reply_all`、`forward_message`、`send_draft`)を用意するかどうかを決める設定です。値がちょうど`true`のとき以外は送信できません。それ以外の値や未設定の場合、4つのツールは登録されず、サーバーが提供するのは23個になります。
+
+| 値 | 送信 |
+| :-- | :-- |
+| *(未設定)* | できない |
+| `true` | できる |
+| それ以外(`TRUE`や`1`を含む) | できない |
+
+Workerのシークレットとして`wrangler secret put ALLOW_SEND`で設定します。デプロイしてもシークレットは削除されないので、一度有効にすれば、その後のデプロイでも送信は有効のままです。下書きの作成と編集は、設定にかかわらずできます。設定が必要なのは送信だけです。
+
+---
+
 ## 📊 上限
 
 第三者に公開した場合に利用枠を使い切られないよう、2つの上限を設けています。どちらも`wrangler.jsonc`で変更できます。
@@ -265,7 +281,7 @@ Workersの**Free**プランには、1回の実行で外部へ送れるリクエ�
 - **1セッションにつき1メールボックスです**。MCPセッションは、それを開いたアカウントに紐づきます。他人のセッションIDを使っても、別のメールボックスは操作できません。
 - **スコープを絞っています。** `gmail.modify`で許可されるのは、閲覧・送信・ラベル操作・ゴミ箱への移動までです。完全削除と`gmail.settings.*`配下は含まれません。乗っ取り後によく使われる自動転送やフィルタの作成は、そもそも権限の外にあります。あわせて`userinfo.email`と`userinfo.profile`も要求します。どちらも読み取り専用で、サインインしたアカウントを許可リストと照合し、セッションに紐づけるために使います。メールには届きません。
 - **ヘッダインジェクションを防ぎます**。送信ヘッダの値にCR、LF、NULが含まれている場合は拒否するので、改行を挟んで別のヘッダを差し込む攻撃はできません。件名の中に`Bcc`を紛れ込ませる、といった手口が該当します。メディアタイプも検証し、引用部分はHTMLエスケープします。ただし引数そのものは制限しません。`bcc`は正規のパラメータなので、本文に仕込まれた指示にモデルが従えば指定される可能性は残り、そこはクライアント側の確認画面が歯止めになります。
-- **アクセスを無効化できます**。新規のサインインを止めるには、`ALLOWED_EMAILS`の許可範囲を狭めます。特定のアカウントからのアクセスは、[myaccount.google.com/connections](https://myaccount.google.com/connections)で取り消せます。すべての認可情報を一度に無効化する場合は、Googleのクライアントシークレットを再生成します。
+- **アクセスを無効化できます**。新規のサインインを止めるには、`ALLOWED_EMAILS`の許可範囲を狭めます。特定のアカウントからのアクセスは、[myaccount.google.com/connections](https://myaccount.google.com/connections)で取り消せます。
 
 リクエストを処理する間、Workerはメールをメモリ上で復号します。中継する以上、これは避けられません。特定のメールボックスでそれが許容できない場合は、そのアカウントだけローカルのMCPサーバーを使うほうが適しています。
 
@@ -273,7 +289,7 @@ Workersの**Free**プランには、1回の実行で外部へ送れるリクエ�
 
 ## ✅ テスト
 
-253件の単体テストで、メールの組み立て（MIMEの入れ子、RFC 2047の折り返し、RFC 2231のファイル名、CR/LFの拒否、base64の折り返し）、文字コードをまたぐ本文の取り出し、返信と転送の組み立て、Googleのトークン処理、サインイン許可リストの判定、サインイン時のCSRFとstateの照合に加えて、Gmailの代役を立ててツール自体の動作も確かめています。セッションの所有者判定、宛先の組み立て、添付ファイルの選択、一部が失敗した読み取りの返し方まで含みます。
+275件の単体テストで、メールの組み立て（MIMEの入れ子、RFC 2047の折り返し、RFC 2231のファイル名、CR/LFの拒否、base64の折り返し）、文字コードをまたぐ本文の取り出し、返信と転送の組み立て、Googleのトークン処理、サインイン許可リストの判定、サインイン時のCSRFとstateの照合に加えて、Gmailの代役を立ててツール自体の動作も確かめています。セッションの所有者判定、宛先の組み立て、添付ファイルの選択、一部が失敗した読み取りの返し方まで含みます。
 
 実際のGmailアカウントの間でも、すべてのツールの動作を確認しました。
 
@@ -293,7 +309,7 @@ Workersの**Free**プランには、1回の実行で外部へ送れるリクエ�
 ```sh
 bun run dev     # wrangler dev、:8788
 bun run check   # biome + tsc
-bun test        # 単体テスト253件
+bun test        # 単体テスト275件
 bun run assets  # ライト・ダークの図を再生成
 bun run deploy
 ```

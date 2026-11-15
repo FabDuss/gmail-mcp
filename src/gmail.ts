@@ -121,6 +121,22 @@ export async function gmailFetch<T = unknown>(
 	return JSON.parse(new TextDecoder().decode(body)) as T;
 }
 
+// Whether a request path puts mail on the wire: Gmail delivers through
+// messages.send and drafts.send alone. The path is judged as fetch will send
+// it, resolved against the base and with its escapes decoded, so that a dot
+// segment or an escaped letter cannot hide a send.
+export function isSendingPath(path: string): boolean {
+	const prefix = new URL(BASE).pathname;
+	let resolved: string;
+	try {
+		resolved = decodeURIComponent(new URL(`${BASE}${path}`).pathname);
+	} catch {
+		// A path that does not parse is one fetch could not send either.
+		return false;
+	}
+	return resolved === `${prefix}/messages/send` || resolved === `${prefix}/drafts/send`;
+}
+
 // Chunked binary-to-base64: a spread into String.fromCharCode overflows the
 // argument limit on bodies past a few tens of kilobytes.
 export function bytesToB64(bytes: Uint8Array): string {

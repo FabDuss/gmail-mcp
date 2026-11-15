@@ -1,5 +1,6 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, type ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { getAgentByName } from "agents";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
@@ -25,6 +26,7 @@ import {
 	gmailFetch,
 	headerValue,
 	type InlineImage,
+	isSendingPath,
 	MAX_ENCODED_ATTACHMENT_BYTES,
 	normalizeMessageId,
 	parseAddresses,
@@ -148,7 +150,9 @@ const inlineImageSchema = z.object({
 });
 type InlineImageArg = z.infer<typeof inlineImageSchema>;
 
-const SEND_TOOLS = new Set(["send_message", "send_draft", "reply_all", "forward_message"]);
+// What a tool does to the mailbox. A client reads it as annotations, and a
+// sending tool is left out while sending is off.
+type ToolKind = "read" | "undoableWrite" | "destructive" | "sending";
 
 export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
@@ -330,7 +334,50 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 		}
 	}
 
+	// Sending is on only when the deployment sets ALLOW_SEND to exactly "true".
+	// Registration and the Gmail request path both ask here, at each use, so
+	// they never disagree with the settings or with each other.
+	protected sendingIsOn(): boolean {
+		return this.env.ALLOW_SEND === "true";
+	}
+
+	// Every tool registers here with its kind, so none is listed without
+	// saying what it does to the mailbox, and a sending tool cannot be listed
+	// while sending is off.
+	protected registerByKind<Shape extends ZodRawShapeCompat>(tool: {
+		kind: ToolKind;
+		name: string;
+		description: string;
+		inputSchema: Shape;
+		handler: ToolCallback<Shape>;
+	}): void {
+		if (tool.kind === "sending" && !this.sendingIsOn()) return;
+		// A destructive tool says so although the protocol defaults to it, so a
+		// client that reads only what is present still sees it.
+		const annotations = {
+			read: { readOnlyHint: true },
+			undoableWrite: { readOnlyHint: false, destructiveHint: false },
+			destructive: { readOnlyHint: false, destructiveHint: true },
+			sending: { readOnlyHint: false, destructiveHint: true },
+		}[tool.kind];
+		this.server.registerTool(
+			tool.name,
+			{
+				description: tool.description,
+				inputSchema: tool.inputSchema,
+				annotations,
+			},
+			tool.handler,
+		);
+	}
+
+	// Every Gmail request passes here, so this is where a send is stopped while
+	// sending is off: a tool registered while it was on still cannot reach
+	// Gmail once the setting reads off, and nothing is refreshed or fetched first.
 	private async api<T = GmailUnknown>(path: string, init: RequestInit = {}): Promise<T> {
+		if (!this.sendingIsOn() && isSendingPath(path)) {
+			throw new Error("sending is off on this deployment; set ALLOW_SEND to true to allow it");
+		}
 		await this.assertSessionOwner();
 		await this.assertWithinRate();
 		try {
@@ -803,32 +850,24 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// with their own grant, rather than every call failing until eviction.
 		const account = (await this.ownerProps()).email;
 
-		// Tools that put mail on the wire. They are registered only when the
-		// deployment sets ALLOW_SEND=true, so a default deployment can read,
-		// search, label and write drafts but cannot send, reply or forward.
-		const sendEnabled = (this.env as { ALLOW_SEND?: string }).ALLOW_SEND === "true";
-		const registerTool = this.server.tool.bind(this.server) as (...args: unknown[]) => unknown;
-		(this.server as { tool: unknown }).tool = (name: string, ...rest: unknown[]) => {
-			if (SEND_TOOLS.has(name) && !sendEnabled) return undefined;
-			return registerTool(name, ...rest);
-		};
+		this.registerByKind({
+			kind: "read",
+			name: "whoami",
+			description: `Show which Gmail account this connection is bound to (${account})`,
+			inputSchema: {},
+			handler: async () => this.text(await this.api("/profile")),
+		});
 
-		this.server.tool(
-			"whoami",
-			`Show which Gmail account this connection is bound to (${account})`,
-			{},
-			async () => this.text(await this.api("/profile")),
-		);
-
-		this.server.tool(
-			"search_messages",
-			`Search mail in ${account} with Gmail query syntax (from:, to:, subject:, is:unread, newer_than:7d, ...)`,
-			{
+		this.registerByKind({
+			kind: "read",
+			name: "search_messages",
+			description: `Search mail in ${account} with Gmail query syntax (from:, to:, subject:, is:unread, newer_than:7d, ...)`,
+			inputSchema: {
 				query: z.string().describe("Gmail search query"),
 				maxResults: z.number().int().min(1).max(50).default(10),
 				pageToken: z.string().optional().describe("nextPageToken from a previous search"),
 			},
-			async ({ query, maxResults, pageToken }) => {
+			handler: async ({ query, maxResults, pageToken }) => {
 				const params = new URLSearchParams({ q: query, maxResults: String(maxResults) });
 				if (pageToken) params.set("pageToken", pageToken);
 				const list = await this.api<MessageList>(`/messages?${params}`);
@@ -846,13 +885,14 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					messages: messages.map((m) => ("error" in m ? m : summarizeMessage(m))),
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"get_message",
-			`Read a full message from ${account}, including decoded body text`,
-			{ messageId: z.string() },
-			async ({ messageId }) => {
+		this.registerByKind({
+			kind: "read",
+			name: "get_message",
+			description: `Read a full message from ${account}, including decoded body text`,
+			inputSchema: { messageId: z.string() },
+			handler: async ({ messageId }) => {
 				const m = await this.api<GmailMessage>(
 					`/messages/${encodeURIComponent(messageId)}?format=full`,
 				);
@@ -863,12 +903,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					attachments: collectAttachments(m.payload).map(describeAttachment),
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"get_thread",
-			`Read a conversation thread from ${account}. Bodies share a total budget, so long threads come back summarized — read individual messages with get_message`,
-			{
+		this.registerByKind({
+			kind: "read",
+			name: "get_thread",
+			description: `Read a conversation thread from ${account}. Bodies share a total budget, so long threads come back summarized — read individual messages with get_message`,
+			inputSchema: {
 				threadId: z.string(),
 				includeBodies: z
 					.boolean()
@@ -882,7 +923,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.default(10)
 					.describe("Newest messages are kept when a thread exceeds this"),
 			},
-			async ({ threadId, includeBodies, maxMessages }) => {
+			handler: async ({ threadId, includeBodies, maxMessages }) => {
 				// A metadata read returns every header of every message — Received
 				// chains, DKIM and ARC signatures, List-* — where five are read.
 				// Naming them turns a long thread from megabytes into kilobytes,
@@ -936,22 +977,29 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				}));
 				return this.text({ messageCount: all.length, omitted, messages });
 			},
-		);
-
-		this.server.tool("list_labels", `List labels in ${account}`, {}, async () => {
-			const l = await this.api<LabelList>("/labels");
-			return this.text((l.labels ?? []).map((x) => ({ id: x.id, name: x.name, type: x.type })));
 		});
 
-		this.server.tool(
-			"modify_labels",
-			`Add or remove labels on a message in ${account} (also archives: remove INBOX; marks read: remove UNREAD)`,
-			{
+		this.registerByKind({
+			kind: "read",
+			name: "list_labels",
+			description: `List labels in ${account}`,
+			inputSchema: {},
+			handler: async () => {
+				const l = await this.api<LabelList>("/labels");
+				return this.text((l.labels ?? []).map((x) => ({ id: x.id, name: x.name, type: x.type })));
+			},
+		});
+
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "modify_labels",
+			description: `Add or remove labels on a message in ${account} (also archives: remove INBOX; marks read: remove UNREAD)`,
+			inputSchema: {
 				messageId: z.string(),
 				addLabelIds: z.array(z.string()).default([]),
 				removeLabelIds: z.array(z.string()).default([]),
 			},
-			async ({ messageId, addLabelIds, removeLabelIds }) => {
+			handler: async ({ messageId, addLabelIds, removeLabelIds }) => {
 				// The modify/trash responses carry no payload, so headers would be
 				// empty; report the label state that actually changed.
 				const m = await this.api(`/messages/${encodeURIComponent(messageId)}/modify`, {
@@ -960,19 +1008,20 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ id: m.id, threadId: m.threadId, labelIds: m.labelIds });
 			},
-		);
+		});
 
-		this.server.tool(
-			"trash_message",
-			`Move a message to the trash in ${account} (reversible for 30 days)`,
-			{ messageId: z.string() },
-			async ({ messageId }) => {
+		this.registerByKind({
+			kind: "destructive",
+			name: "trash_message",
+			description: `Move a message to the trash in ${account} (reversible for 30 days)`,
+			inputSchema: { messageId: z.string() },
+			handler: async ({ messageId }) => {
 				const m = await this.api(`/messages/${encodeURIComponent(messageId)}/trash`, {
 					method: "POST",
 				});
 				return this.text({ id: m.id, threadId: m.threadId, labelIds: m.labelIds });
 			},
-		);
+		});
 
 		const draftFields = {
 			to: z.string(),
@@ -986,10 +1035,11 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 			inlineImages: z.array(inlineImageSchema).default([]),
 		};
 
-		this.server.tool(
-			"create_draft",
-			`Create a draft in ${account} without sending. With replyToMessageId the draft joins that message's thread, carries its threading headers, and derives recipients and subject from a reply-all when they are not given`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "create_draft",
+			description: `Create a draft in ${account} without sending. With replyToMessageId the draft joins that message's thread, carries its threading headers, and derives recipients and subject from a reply-all when they are not given`,
+			inputSchema: {
 				...draftFields,
 				to: z.string().optional().describe("Required unless replyToMessageId derives it"),
 				subject: z.string().optional().describe("Required unless replyToMessageId derives it"),
@@ -1002,7 +1052,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.default(true)
 					.describe("When replying, quote the original under the body"),
 			},
-			async ({ replyToMessageId, quote, to, subject, body, ...rest }) => {
+			handler: async ({ replyToMessageId, quote, to, subject, body, ...rest }) => {
 				if (replyToMessageId) {
 					return this.createReplyDraft({ replyToMessageId, quote, to, subject, body, ...rest });
 				}
@@ -1027,12 +1077,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ draftId: d.id, messageId: d.message?.id });
 			},
-		);
+		});
 
-		this.server.tool(
-			"update_draft",
-			`Change parts of a draft in ${account}. Whatever is not passed keeps its current value — recipients, subject, text, files added in any client, and the thread the draft answers all survive the rebuild`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "update_draft",
+			description: `Change parts of a draft in ${account}. Whatever is not passed keeps its current value — recipients, subject, text, files added in any client, and the thread the draft answers all survive the rebuild`,
+			inputSchema: {
 				draftId: z.string(),
 				to: z.string().optional(),
 				subject: z.string().optional(),
@@ -1056,7 +1107,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.optional()
 					.describe("Omit to keep the images the draft's HTML shows; [] removes them"),
 			},
-			async ({
+			handler: async ({
 				draftId,
 				to,
 				subject,
@@ -1130,39 +1181,42 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					attachments: files.map((f) => f.filename),
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"send_draft",
-			`Send an existing draft from ${account}`,
-			{ draftId: z.string() },
-			async ({ draftId }) => {
+		this.registerByKind({
+			kind: "sending",
+			name: "send_draft",
+			description: `Send an existing draft from ${account}`,
+			inputSchema: { draftId: z.string() },
+			handler: async ({ draftId }) => {
 				const m = await this.api("/drafts/send", {
 					method: "POST",
 					body: JSON.stringify({ id: draftId }),
 				});
 				return this.text({ id: m.id, threadId: m.threadId, labelIds: m.labelIds });
 			},
-		);
+		});
 
-		this.server.tool(
-			"delete_draft",
-			`Delete a draft in ${account} permanently (drafts have no trash)`,
-			{ draftId: z.string() },
-			async ({ draftId }) => {
+		this.registerByKind({
+			kind: "destructive",
+			name: "delete_draft",
+			description: `Delete a draft in ${account} permanently (drafts have no trash)`,
+			inputSchema: { draftId: z.string() },
+			handler: async ({ draftId }) => {
 				await this.api(`/drafts/${encodeURIComponent(draftId)}`, { method: "DELETE" });
 				return this.text({ deleted: draftId });
 			},
-		);
+		});
 
-		this.server.tool(
-			"list_drafts",
-			`List drafts in ${account}`,
-			{
+		this.registerByKind({
+			kind: "read",
+			name: "list_drafts",
+			description: `List drafts in ${account}`,
+			inputSchema: {
 				maxResults: z.number().int().min(1).max(50).default(10),
 				pageToken: z.string().optional().describe("nextPageToken from a previous listing"),
 			},
-			async ({ maxResults, pageToken }) => {
+			handler: async ({ maxResults, pageToken }) => {
 				// Without a page token the drafts past the first page cannot be
 				// reached at all: the listing is the only place their ids appear.
 				const draftParams = new URLSearchParams({ maxResults: String(maxResults) });
@@ -1186,16 +1240,17 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ nextPageToken: l.nextPageToken, drafts: detailed });
 			},
-		);
+		});
 
-		this.server.tool(
-			"stage_attachment_begin",
-			`Stage a file for ${account} outside tool arguments, for attachments whose base64 is too large to pass inline. Then either PUT the raw file bytes to the returned uploadUrl (curl -T <file> '<uploadUrl>'), which finishes the staging by itself, or send base64 with stage_attachment_append and seal it with stage_attachment_finish. Any attachments or inlineImages field then accepts {"stagingId": ...}`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "stage_attachment_begin",
+			description: `Stage a file for ${account} outside tool arguments, for attachments whose base64 is too large to pass inline. Then either PUT the raw file bytes to the returned uploadUrl (curl -T <file> '<uploadUrl>'), which finishes the staging by itself, or send base64 with stage_attachment_append and seal it with stage_attachment_finish. Any attachments or inlineImages field then accepts {"stagingId": ...}`,
+			inputSchema: {
 				filename: z.string(),
 				contentType: z.string().describe("Media type, e.g. application/pdf"),
 			},
-			async ({ filename, contentType }) => {
+			handler: async ({ filename, contentType }) => {
 				await this.assertSessionOwner();
 				await this.assertWithinRate();
 				// Refused here, before any bytes move: the builder would refuse the
@@ -1238,18 +1293,19 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 						: "append base64 with stage_attachment_append, then call stage_attachment_finish",
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"stage_attachment_append",
-			`Add base64 to a staged attachment in ${account}, in order, up to ${MAX_APPEND_CHARS} characters per call`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "stage_attachment_append",
+			description: `Add base64 to a staged attachment in ${account}, in order, up to ${MAX_APPEND_CHARS} characters per call`,
+			inputSchema: {
 				stagingId: z.string(),
 				content: z
 					.string()
 					.describe("Standard base64; every chunk before the last must carry no padding"),
 			},
-			async ({ stagingId, content }) => {
+			handler: async ({ stagingId, content }) => {
 				await this.assertSessionOwner();
 				await this.assertWithinRate();
 				const meta = await this.stagedMeta(stagingId);
@@ -1281,13 +1337,14 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				await this.ctx.storage.put(`staged:${stagingId}`, next);
 				return this.text({ stagingId, encodedLength: next.encodedLength });
 			},
-		);
+		});
 
-		this.server.tool(
-			"stage_attachment_finish",
-			`Seal a staged attachment in ${account} so messages and drafts can attach it by stagingId`,
-			{ stagingId: z.string() },
-			async ({ stagingId }) => {
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "stage_attachment_finish",
+			description: `Seal a staged attachment in ${account} so messages and drafts can attach it by stagingId`,
+			inputSchema: { stagingId: z.string() },
+			handler: async ({ stagingId }) => {
 				await this.assertSessionOwner();
 				await this.assertWithinRate();
 				const meta = await this.stagedMeta(stagingId);
@@ -1303,12 +1360,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					expiresAt: new Date(sealed.at + STAGED_TTL_MS).toISOString(),
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"send_message",
-			`Send mail as ${account}. For replies pass threadId plus the original's Message-ID header, or its Gmail message id, as inReplyTo`,
-			{
+		this.registerByKind({
+			kind: "sending",
+			name: "send_message",
+			description: `Send mail as ${account}. For replies pass threadId plus the original's Message-ID header, or its Gmail message id, as inReplyTo`,
+			inputSchema: {
 				...draftFields,
 				threadId: z.string().optional(),
 				inReplyTo: z
@@ -1318,7 +1376,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 						"Message-ID header value of the message being replied to; a Gmail message id is resolved to it",
 					),
 			},
-			async ({
+			handler: async ({
 				to,
 				subject,
 				body,
@@ -1361,19 +1419,20 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ id: m.id, threadId: m.threadId, labelIds: m.labelIds });
 			},
-		);
+		});
 
-		this.server.tool(
-			"reply_all",
-			`Reply to a message in ${account}, addressing every original recipient except this account, with the original quoted`,
-			{
+		this.registerByKind({
+			kind: "sending",
+			name: "reply_all",
+			description: `Reply to a message in ${account}, addressing every original recipient except this account, with the original quoted`,
+			inputSchema: {
 				messageId: z.string().describe("The message being replied to"),
 				body: z.string().describe("Plain-text reply, without quoted history"),
 				htmlBody: z.string().optional().describe("HTML reply, without quoted history"),
 				attachments: z.array(filePartSchema).default([]),
 				inlineImages: z.array(inlineImageSchema).default([]),
 			},
-			async ({ messageId, body, htmlBody, attachments, inlineImages }) => {
+			handler: async ({ messageId, body, htmlBody, attachments, inlineImages }) => {
 				const reply = await this.replyContext(messageId);
 				if (reply.to.length === 0) {
 					throw new Error("reply_all found no recipient other than this account");
@@ -1398,12 +1457,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ id: m.id, threadId: m.threadId, to: reply.to, cc: reply.cc });
 			},
-		);
+		});
 
-		this.server.tool(
-			"forward_message",
-			`Forward a message from ${account}, quoting the original above its own headers`,
-			{
+		this.registerByKind({
+			kind: "sending",
+			name: "forward_message",
+			description: `Forward a message from ${account}, quoting the original above its own headers`,
+			inputSchema: {
 				messageId: z.string().describe("The message being forwarded"),
 				to: z.string(),
 				cc: z.string().optional(),
@@ -1414,7 +1474,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.default(false)
 					.describe("Re-attach the original's files, within the attachment size budget"),
 			},
-			async ({ messageId, to, cc, body, htmlBody, includeAttachments }) => {
+			handler: async ({ messageId, to, cc, body, htmlBody, includeAttachments }) => {
 				const original = await this.api<GmailMessage>(
 					`/messages/${encodeURIComponent(messageId)}?format=full`,
 				);
@@ -1499,12 +1559,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					...(includeAttachments && skipped.length > 0 ? { skippedTooLarge: skipped } : {}),
 				});
 			},
-		);
+		});
 
-		this.server.tool(
-			"get_attachment",
-			`Download an attachment from a message in ${account}. Returns base64 while it stays small enough to read; text types come back decoded`,
-			{
+		this.registerByKind({
+			kind: "read",
+			name: "get_attachment",
+			description: `Download an attachment from a message in ${account}. Returns base64 while it stays small enough to read; text types come back decoded`,
+			inputSchema: {
 				messageId: z.string(),
 				attachmentId: z
 					.string()
@@ -1518,7 +1579,7 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 					.default(false)
 					.describe("Return only decoded text for text/* attachments, no base64"),
 			},
-			async ({ messageId, attachmentId, filename, textOnly }) => {
+			handler: async ({ messageId, attachmentId, filename, textOnly }) => {
 				// The part's declared type decides whether decoding to text is
 				// meaningful; decoding a PDF as UTF-8 would return pages of noise.
 				const message = await this.api<GmailMessage>(
@@ -1599,29 +1660,31 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				// Returning it in the form they accept makes the round trip work.
 				return this.text({ ...meta, contentBase64: b64urlToStandard(data) });
 			},
-		);
+		});
 
-		this.server.tool(
-			"untrash_message",
-			`Restore a message from the trash in ${account}`,
-			{ messageId: z.string() },
-			async ({ messageId }) => {
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "untrash_message",
+			description: `Restore a message from the trash in ${account}`,
+			inputSchema: { messageId: z.string() },
+			handler: async ({ messageId }) => {
 				const m = await this.api(`/messages/${encodeURIComponent(messageId)}/untrash`, {
 					method: "POST",
 				});
 				return this.text({ id: m.id, threadId: m.threadId, labelIds: m.labelIds });
 			},
-		);
+		});
 
-		this.server.tool(
-			"modify_thread_labels",
-			`Add or remove labels on every message of a thread in ${account}`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "modify_thread_labels",
+			description: `Add or remove labels on every message of a thread in ${account}`,
+			inputSchema: {
 				threadId: z.string(),
 				addLabelIds: z.array(z.string()).default([]),
 				removeLabelIds: z.array(z.string()).default([]),
 			},
-			async ({ threadId, addLabelIds, removeLabelIds }) => {
+			handler: async ({ threadId, addLabelIds, removeLabelIds }) => {
 				const t = await this.api<{ id?: string; messages?: GmailMessage[] }>(
 					`/threads/${encodeURIComponent(threadId)}/modify`,
 					{
@@ -1631,54 +1694,58 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				);
 				return this.text({ id: t.id, messages: (t.messages ?? []).length });
 			},
-		);
+		});
 
-		this.server.tool(
-			"trash_thread",
-			`Move a whole thread to the trash in ${account} (reversible for 30 days)`,
-			{ threadId: z.string() },
-			async ({ threadId }) => {
+		this.registerByKind({
+			kind: "destructive",
+			name: "trash_thread",
+			description: `Move a whole thread to the trash in ${account} (reversible for 30 days)`,
+			inputSchema: { threadId: z.string() },
+			handler: async ({ threadId }) => {
 				const t = await this.api(`/threads/${encodeURIComponent(threadId)}/trash`, {
 					method: "POST",
 				});
 				return this.text({ id: t.id, trashed: true });
 			},
-		);
+		});
 
-		this.server.tool(
-			"untrash_thread",
-			`Restore a whole thread from the trash in ${account}`,
-			{ threadId: z.string() },
-			async ({ threadId }) => {
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "untrash_thread",
+			description: `Restore a whole thread from the trash in ${account}`,
+			inputSchema: { threadId: z.string() },
+			handler: async ({ threadId }) => {
 				const t = await this.api(`/threads/${encodeURIComponent(threadId)}/untrash`, {
 					method: "POST",
 				});
 				return this.text({ id: t.id, trashed: false });
 			},
-		);
+		});
 
-		this.server.tool(
-			"batch_modify_messages",
-			`Add or remove labels on up to 1000 messages of ${account} in one call (archive: remove INBOX; mark read: remove UNREAD)`,
-			{
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "batch_modify_messages",
+			description: `Add or remove labels on up to 1000 messages of ${account} in one call (archive: remove INBOX; mark read: remove UNREAD)`,
+			inputSchema: {
 				messageIds: z.array(z.string()).min(1).max(1000),
 				addLabelIds: z.array(z.string()).default([]),
 				removeLabelIds: z.array(z.string()).default([]),
 			},
-			async ({ messageIds, addLabelIds, removeLabelIds }) => {
+			handler: async ({ messageIds, addLabelIds, removeLabelIds }) => {
 				await this.api("/messages/batchModify", {
 					method: "POST",
 					body: JSON.stringify({ ids: messageIds, addLabelIds, removeLabelIds }),
 				});
 				return this.text({ modified: messageIds.length, addLabelIds, removeLabelIds });
 			},
-		);
+		});
 
-		this.server.tool(
-			"create_label",
-			`Create a label in ${account}`,
-			{ name: z.string().describe("Nested labels use '/', e.g. Projects/Website") },
-			async ({ name }) => {
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "create_label",
+			description: `Create a label in ${account}`,
+			inputSchema: { name: z.string().describe("Nested labels use '/', e.g. Projects/Website") },
+			handler: async ({ name }) => {
 				const l = await this.api("/labels", {
 					method: "POST",
 					body: JSON.stringify({
@@ -1689,30 +1756,32 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 				});
 				return this.text({ id: l.id, name: l.name });
 			},
-		);
+		});
 
-		this.server.tool(
-			"update_label",
-			`Rename a label in ${account}`,
-			{ labelId: z.string(), name: z.string() },
-			async ({ labelId, name }) => {
+		this.registerByKind({
+			kind: "undoableWrite",
+			name: "update_label",
+			description: `Rename a label in ${account}`,
+			inputSchema: { labelId: z.string(), name: z.string() },
+			handler: async ({ labelId, name }) => {
 				const l = await this.api(`/labels/${encodeURIComponent(labelId)}`, {
 					method: "PATCH",
 					body: JSON.stringify({ name }),
 				});
 				return this.text({ id: l.id, name: l.name });
 			},
-		);
+		});
 
-		this.server.tool(
-			"delete_label",
-			`Delete a label in ${account} (messages keep their other labels)`,
-			{ labelId: z.string() },
-			async ({ labelId }) => {
+		this.registerByKind({
+			kind: "destructive",
+			name: "delete_label",
+			description: `Delete a label in ${account} (messages keep their other labels)`,
+			inputSchema: { labelId: z.string() },
+			handler: async ({ labelId }) => {
 				await this.api(`/labels/${encodeURIComponent(labelId)}`, { method: "DELETE" });
 				return this.text({ deleted: labelId });
 			},
-		);
+		});
 	}
 }
 
