@@ -11,3 +11,9 @@ The pilot resumed this draft. Main was already in the epic branch at 84e427c. No
 ## 2026-11-12T11:14Z · session · confirmed
 
 The pilot confirmed the intent at invocation 0, with NEED-001 to NEED-008 and four questions for the architect. Frontier and fog are empty.
+
+## 2026-11-15T12:27Z · session · confirmed
+
+Run lost: architect
+
+The architect run launched on 2026-11-12 stopped on an API usage limit before it landed anything. Its worktree keeps `design.md`, `CONTEXT.md` and tree changes in progress. The session resumes it once.
