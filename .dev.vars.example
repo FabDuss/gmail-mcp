@@ -4,3 +4,5 @@ GOOGLE_CLIENT_SECRET=
 COOKIE_ENCRYPTION_KEY=
 # comma-separated Google account emails permitted to authenticate
 ALLOWED_EMAILS=
+# sending mail is off unless this is exactly "true"
+ALLOW_SEND=

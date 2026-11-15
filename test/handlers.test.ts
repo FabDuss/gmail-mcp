@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import "./runtime-shim";
 
 const { GmailMCP, default: worker } = await import("../src/index");
@@ -42,13 +45,15 @@ function serveGmail(routes: [RegExp, Route][]) {
 	}) as unknown as typeof fetch;
 }
 
-function makeAgent(email = "me@example.com") {
+function makeAgent(email = "me@example.com", server?: McpServer) {
 	const handlers = new Map<string, Handler>();
 	const storage = new Map<string, unknown>();
 	const agent = Object.create(GmailMCP.prototype) as Record<string, unknown>;
-	agent.server = {
-		tool: (name: string, _d: string, _s: unknown, cb: Handler) => handlers.set(name, cb),
-	};
+	agent.server =
+		server ??
+		({
+			registerTool: (name: string, _config: unknown, cb: Handler) => handlers.set(name, cb),
+		} satisfies Record<string, unknown>);
 	agent.props = {
 		email,
 		name: "Tester",
@@ -1261,26 +1266,102 @@ describe("forwarding a long message", () => {
 	});
 });
 
-describe("sending is off unless the deployment enables it", () => {
-	const SENDING = ["send_message", "send_draft", "reply_all", "forward_message"];
+/** What a client connected to the agent in process sees when it lists the tools. */
+async function listTools(env: Record<string, string>) {
+	const server = new McpServer({ name: "Gmail MCP", version: "0.0.0" });
+	const made = makeAgent("me@example.com", server);
+	(made.agent as { env: Record<string, string> }).env = {
+		GOOGLE_CLIENT_ID: "id",
+		GOOGLE_CLIENT_SECRET: "secret",
+		...env,
+	};
+	await (made.agent as { init: () => Promise<void> }).init();
+	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: "test client", version: "0.0.0" });
+	await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+	const { tools } = await client.listTools();
+	await client.close();
+	return tools;
+}
 
-	test("without ALLOW_SEND the four sending tools are not registered and drafts still are", async () => {
-		const made = makeAgent();
-		(made.agent as { env: Record<string, string> }).env = {
-			GOOGLE_CLIENT_ID: "id",
-			GOOGLE_CLIENT_SECRET: "secret",
-		};
-		await (made.agent as { init: () => Promise<void> }).init();
-		for (const name of SENDING) expect(made.handlers.has(name)).toBe(false);
-		for (const name of ["create_draft", "update_draft", "search_messages", "get_message"]) {
-			expect(made.handlers.has(name)).toBe(true);
+const READ_TOOLS = [
+	"whoami",
+	"search_messages",
+	"get_message",
+	"get_thread",
+	"list_labels",
+	"list_drafts",
+	"get_attachment",
+];
+const UNDOABLE_WRITES = [
+	"modify_labels",
+	"modify_thread_labels",
+	"batch_modify_messages",
+	"create_draft",
+	"update_draft",
+	"untrash_message",
+	"untrash_thread",
+	"create_label",
+	"update_label",
+	"stage_attachment_begin",
+	"stage_attachment_append",
+	"stage_attachment_finish",
+];
+const DESTRUCTIVE_TOOLS = ["trash_message", "trash_thread", "delete_draft", "delete_label"];
+const SENDING = ["send_message", "send_draft", "reply_all", "forward_message"];
+
+describe("a client lists the tools with the annotations of their kind", () => {
+	const annotationsOf = (tools: Awaited<ReturnType<typeof listTools>>, name: string) =>
+		tools.find((t) => t.name === name)?.annotations;
+
+	test("each read tool is marked read-only", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of READ_TOOLS) {
+			expect(annotationsOf(tools, name)?.readOnlyHint).toBe(true);
 		}
-		expect(made.handlers.size).toBe(23);
 	});
 
-	test("with ALLOW_SEND=true all 27 tools are registered", async () => {
-		const made = await boot();
-		for (const name of SENDING) expect(made.handlers.has(name)).toBe(true);
-		expect(made.handlers.size).toBe(27);
+	test("each undoable write is marked neither read-only nor destructive", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of UNDOABLE_WRITES) {
+			const annotations = annotationsOf(tools, name);
+			expect(annotations?.readOnlyHint).toBe(false);
+			expect(annotations?.destructiveHint).toBe(false);
+		}
+	});
+
+	test("each destructive and sending tool is marked destructive, written out", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of [...DESTRUCTIVE_TOOLS, ...SENDING]) {
+			const annotations = annotationsOf(tools, name);
+			expect(annotations?.readOnlyHint).toBe(false);
+			expect(annotations?.destructiveHint).toBe(true);
+		}
+	});
+});
+
+describe("sending is off unless the deployment enables it", () => {
+	test("without ALLOW_SEND the four sending tools are not listed and drafts still are", async () => {
+		const tools = await listTools({});
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).not.toContain(name);
+		for (const name of ["create_draft", "update_draft", "search_messages", "get_message"]) {
+			expect(names).toContain(name);
+		}
+		expect(tools).toHaveLength(23);
+	});
+
+	test("ALLOW_SEND=True is sending off", async () => {
+		const tools = await listTools({ ALLOW_SEND: "True" });
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).not.toContain(name);
+		expect(tools).toHaveLength(23);
+	});
+
+	test("with ALLOW_SEND=true all 27 tools are listed", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		const names = tools.map((t) => t.name);
+		for (const name of SENDING) expect(names).toContain(name);
+		expect(tools).toHaveLength(27);
 	});
 });
