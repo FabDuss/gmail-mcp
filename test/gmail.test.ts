@@ -1527,6 +1527,18 @@ describe("isSendingPath", () => {
 		]);
 	});
 
+	test("names a method only when it is exactly messages.send or drafts.send", () => {
+		expect(answers(["/messages/sendfoo", "/drafts/sendfoo", "/messages/send/extra"])).toEqual([
+			["/messages/sendfoo", false],
+			["/drafts/sendfoo", false],
+			["/messages/send/extra", false],
+		]);
+	});
+
+	test("does not name a path whose escapes cannot be decoded, and throws nothing", () => {
+		expect(answers(["/messages/%E0%A4%A"])).toEqual([["/messages/%E0%A4%A", false]]);
+	});
+
 	test("leaves every other Gmail path alone", () => {
 		expect(
 			answers([

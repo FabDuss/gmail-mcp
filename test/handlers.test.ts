@@ -1425,12 +1425,13 @@ describe("a sending tool called while sending is off", () => {
 	 * Registers every tool while sending is on, then has the deployment's setting
 	 * read off, with a token already past its expiry so that a refresh would show.
 	 */
-	async function bootThenTurnSendingOff() {
+	async function bootThenTurnSendingOff(extraEnv: Record<string, unknown> = {}) {
 		const made = await boot();
 		made.agent.env = {
 			GOOGLE_CLIENT_ID: "id",
 			GOOGLE_CLIENT_SECRET: "secret",
 			ALLOW_SEND: "false",
+			...extraEnv,
 		};
 		made.agent.props = {
 			email: "me@example.com",
@@ -1453,6 +1454,42 @@ describe("a sending tool called while sending is off", () => {
 
 	test("send_draft is refused with an error naming ALLOW_SEND, and nothing is requested", async () => {
 		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	const exhaustedLimiter = { limit: async () => ({ success: false }) };
+
+	test("send_message is refused for ALLOW_SEND, not the rate limit, when the rate limiter is exhausted", async () => {
+		const { handlers } = await bootThenTurnSendingOff({ RATE_LIMITER: exhaustedLimiter });
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused for ALLOW_SEND, not the rate limit, when the rate limiter is exhausted", async () => {
+		const { handlers } = await bootThenTurnSendingOff({ RATE_LIMITER: exhaustedLimiter });
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_message is refused for ALLOW_SEND, not the session owner, when another account owns the session", async () => {
+		const { handlers, storage } = await bootThenTurnSendingOff();
+		storage.set("owner", "someone-else@example.com");
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused for ALLOW_SEND, not the session owner, when another account owns the session", async () => {
+		const { handlers, storage } = await bootThenTurnSendingOff();
+		storage.set("owner", "someone-else@example.com");
 		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
 		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
 		expect(requests).toEqual([]);
