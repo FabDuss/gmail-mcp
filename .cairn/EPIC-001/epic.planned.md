@@ -81,3 +81,9 @@ Revision for NEED-009, from the closing review of PLAN-001. The design stays sho
 - Changed: none. Removed: none. TASK-001 to TASK-005 are untouched; their work-packages are all hardened.
 
 The Impact gains FACT-027, ran: the check's fix rewrites exactly the nine claims, 253 to 275 at 6ee2fd3, and nothing else. Once TASK-006 lands, the known red on the test-count claims in `baseline.md` no longer holds. `CONTEXT.md` and the ADRs do not change: Q-008 is a need, not a concept. No rearrangement seen.
+
+## 2026-11-15T14:17Z · planner · planned
+
+PLAN-002 The READMEs state the test count the suite runs, composed after the barrier of PLAN-001 from TASK-006, the only TASK the revision added. It is short because it rewrites nine numbers in three READMEs. `plan.md` carries the order: WP-004 The CI count check passes on the three READMEs, trivial, opens alone and closes NEED-009. Every work-package that adds a test is `hardened`, so WP-004 lands after all of them, as TASK-006 asks. No TASK is left for a next plan.
+
+The sketch is empty: TASK-006 names no interface, type or seam in the code. FACT-027 still holds, since no file outside `.cairn/` moved between 6ee2fd3 and the epic head 1693986; the count check run there prints the same nine failing lines, 253 claimed against 275 run, none about tools.
