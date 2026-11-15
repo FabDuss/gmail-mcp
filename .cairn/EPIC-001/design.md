@@ -40,18 +40,20 @@ The design is short because the epic changes two places in one module, the regis
 
 ### The count check of CI (modified)
 
-- **Responsibility.** Fails when a README badge states a tool count other than the number of tool registrations in the source.
-- **Rules.** It counts every registration in the source, the four sending tools included, so 27 whatever the setting (DEC-004).
+- **Responsibility.** Fails when a README badge states a tool count other than the number of tool registrations in the source, or when a README claims a test count other than the number of tests the suite runs. With its fix option, it rewrites the claims it reads instead (FACT-027).
+- **Rules.** It counts every registration in the source, the four sending tools included, so 27 whatever the setting (DEC-004). TASK-006 changes none of its rules.
 - **Exemplar module.** Its own current form.
 
 ### The documentation (modified)
 
-- **Responsibility.** The English README, its Japanese and Chinese translations, and the landing page.
+- **Responsibility.** The English README, its Japanese and Chinese translations, and the landing page. The three READMEs state the tool count and the test count that the count check reads.
 - **Exemplar module.** The "Who can sign in" section, which documents `ALLOWED_EMAILS`, is the model for the `ALLOW_SEND` section.
 
 ## Core and risks
 
 The epic stands on two results: a client sees each tool's kind in the list, and no sending request reaches Gmail while sending is off. TASK-001 and TASK-002 carry them. The most uncertain point is the typing of the registration method: it must pass each tool's input shape through to the SDK's generic `registerTool` so that every handler keeps its typed arguments. The type check finds a miss, and the cost is a rework of one method's signature.
+
+TASK-006, added after the closing review of PLAN-001, holds only if no test enters the suite after it lands, since every new test moves the count it states.
 
 ## Decisions
 
@@ -100,17 +102,20 @@ The epic stands on two results: a client sees each tool's kind in the list, and 
 - The path every Gmail request takes gains a refusal that throws before the session owner check, the rate limiter and any token refresh. With sending on, nothing changes on that path.
 - The handler tests' harness stops working the moment registration changes, because its stub has only `tool()` (FACT-018).
 - The count check's pattern stops matching the source the moment registration changes (FACT-009).
+- The nine test-count claims of the three READMEs, the badges and the sentences of their testing sections, move from 253 to the number the suite runs, 275 at 6ee2fd3 (FACT-027). The CI step "Tool and test counts match the source" turns green, and the known red of the epic's baseline on those claims no longer holds.
 
 ### The facts it is safe because of
 
 - **FACT-013**, pointed: every Gmail request goes through one method of the session agent, and `gmailFetch` prefixes every path with Gmail's base URL. A refusal at the top of that method therefore stops every sending request, and no upload variant of a send method is reachable.
 - **FACT-010**, ran: the throwaway script registered tools through `registerTool` with annotations and listed them through a real SDK client. Each tool came back with its annotations exactly as given, and a handler that threw came back as `isError: true` (FACT-011).
 - **FACT-016**, ran under bun: a dot segment resolves before the request leaves, so the predicate must judge the resolved path, and does.
+- **FACT-027**, ran: the count check's fix, run on copies of the three READMEs, changed exactly the nine claims and only their number, and the check then passed on tools and tests. A fix through the check therefore cannot rewrite a year, an RFC number or a port elsewhere in the READMEs.
 
 ### Risks
 
 - **The count check fails CI.** It counts `this.server.tool(` and would find none after the change. The chance is certain without a fix, and the cost is a red CI step. The check is to run it and read that no line about tools fails. That is the cheapest check before integration, and it is a DoD line of TASK-001.
-- **The count check already fails on the test count.** The README claims 253 tests while the suite runs 255 (FACT-004), and the pilot left that out of the epic. Each work-package that adds tests widens the gap. The cost is a step that stays red for a reason that predates the epic. DoD lines read only the tool line of the check.
+- **The count check already fails on the test count.** The README claims 253 tests while the suite runs 255 (FACT-004), and the pilot first left that out of the epic. Each work-package that adds tests widens the gap. The DoD lines of TASK-001 and TASK-005 read only the tool line of the check. Since the closing review of PLAN-001, TASK-006 closes the gap (NEED-009).
+- **A test lands after TASK-006.** Any test that enters the suite after the claims are rewritten moves the count, and the step turns red again. The chance is low: TASK-006 is the epic's last TASK, and `origin/main` holds no commit absent from the epic (FACT-027), so the merge of main at the last barrier adds no test today. The cost is one more run of the check's fix. The check is the barrier's run of the count check, on the epic head that the PR carries.
 - **Handler arguments lose their types.** A registration method that does not pass the input shape through as a generic leaves handler arguments untyped. The chance is medium, and the cost is a compile error or untyped handlers. The type check of the gates finds it.
 - **Every handler test breaks with the harness.** Its stub has no `registerTool` (FACT-018). The chance is certain, and the fix belongs to TASK-001.
 
@@ -122,10 +127,11 @@ The epic stands on two results: a client sees each tool's kind in the list, and 
 - **An unset ALLOW_SEND typed as `string`.** The four secrets already work this way, and the comparison with `"true"` is false for `undefined`.
 - **The plugin manifest's list of 27 tools.** It does not drive the server's list, and nothing in CI reads it (FACT-019). It stays as it is.
 - **The 401 retry and the 429 backoff.** Both run after the refusal, so a refused request never reaches them.
+- **A test-count claim the check does not read.** The landing page states no test count, and every claim in the three READMEs matches a pattern of the check (FACT-027).
 
 ### The cheapest check before integration
 
-Run the count check after the registration change and read that it prints no failing line about tools. It is DoD line 7 of TASK-001.
+Run the count check after the registration change and read that it prints no failing line about tools. It is DoD line 7 of TASK-001. For TASK-006, run the count check and read that it exits 0, which is its DoD line 1.
 
 ## TASK catalogue
 
@@ -217,6 +223,22 @@ Run the count check after the registration change and read that it prints no fai
   4. The count check prints no failing line about tools, and the render check passes. Verified by running them, the render check where its token is available.
 - **Mechanical.** Yes.
 
+### TASK-006 The READMEs state the number of tests the suite runs
+
+- **Nature.** Behaviour.
+- **Serves.** NEED-009.
+- **What changes.**
+  - In the English README and its two translations, each of the nine test-count claims the count check reads, the test badge and the sentences of the testing section, states the number of tests the suite runs on the commit that carries them. The count check's fix option rewrites them.
+  - The count check, its patterns and the wording of the claims do not change.
+  - The work-package that carries this TASK lands after every work-package that adds a test.
+- **Layers.** The documentation.
+- **Rests on.** FACT-009, FACT-027; Q-008.
+- **DoD.**
+  1. The count check, run on the commit that carries the claims, prints no failing line and exits 0. Verified by running it.
+  2. Only the number in each of the nine claims changes: no other line of the three READMEs moves, and no file outside them and Cairn's own changes. Verified by reading the diff.
+  3. The render check of CI passes on the three READMEs. Verified by running it where its GitHub token is available, otherwise in CI.
+- **Mechanical.** Yes.
+
 ## Coverage
 
 | NEED | TASKs |
@@ -229,6 +251,7 @@ Run the count check after the registration change and read that it prints no fai
 | NEED-006 | TASK-001, TASK-002, TASK-003 |
 | NEED-007 | TASK-004 |
 | NEED-008 | TASK-005 |
+| NEED-009 | TASK-006 |
 
 ## No lever
 

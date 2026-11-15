@@ -72,3 +72,12 @@ The pilot accepted the observation and the session's closing recommendations wit
 ## 2026-11-15T14:15Z · session · confirmed
 
 Invocation 1 of ideation, from the pilot's closing decision to fix the test-count claims in this epic, as a change asked on the PR. Q-008 decided, NEED-009 created, and the out-of-scope line on the test count removed. The known red of `baseline.md` on those claims is now the epic's work. The architect serves NEED-009.
+
+## 2026-11-15T14:15Z · architect · designed
+
+Revision for NEED-009, from the closing review of PLAN-001. The design stays short because the revision rewrites nine numbers in the three READMEs through the count check's own fix.
+
+- Added: TASK-006 The READMEs state the number of tests the suite runs. Mechanical. It must land after every work-package that adds a test.
+- Changed: none. Removed: none. TASK-001 to TASK-005 are untouched; their work-packages are all hardened.
+
+The Impact gains FACT-027, ran: the check's fix rewrites exactly the nine claims, 253 to 275 at 6ee2fd3, and nothing else. Once TASK-006 lands, the known red on the test-count claims in `baseline.md` no longer holds. `CONTEXT.md` and the ADRs do not change: Q-008 is a need, not a concept. No rearrangement seen.

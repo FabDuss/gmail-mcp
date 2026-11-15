@@ -341,6 +341,14 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: read in the files.
 - Used by: NEED-008, barrier of PLAN-001-send-safeguards.
 
+### FACT-027 The count check finds nine test-count claims of 253 against 275 tests run, and its fix rewrites only them
+
+- Observed: run without arguments, `scripts/check-counts.py` prints nine failing lines, each "claims 253 tests, source has 275", and none about tools, then exits 1. The nine claims are the badge `tests-253_passing` at `README.md:16`, `README.ja.md:8` and `README.zh.md:8`; "253 unit tests" at `README.md:308,328`; "253件の単体テスト" at `README.ja.md:292`; "単体テスト253件" at `README.ja.md:312`; and "253个单元测试" at `README.zh.md:292,312`. Each matches one pattern of `TEST_CLAIMS`. The script reads the suite's count from the "Ran N tests" line of `bun test`. `docs/index.html` states no test count. A throwaway script ran the check's `fix` with 275 on copies of the three READMEs: it changed three lines in each, each only from 253 to 275, and the check then reported no problem on tools or tests. `origin/main` holds no commit absent from the epic. This supersedes FACT-004 on the test count.
+- Source: `scripts/check-counts.py:21-27,36-44,47-77`; the lines named above; `/tmp/EPIC-001-architect-proof/fix_proof.py`, run with python3.
+- Commit: 6ee2fd3.
+- Certainty: ran.
+- Used by: TASK-006, Impact.
+
 ## Invocations
 
 ### Invocation 0
