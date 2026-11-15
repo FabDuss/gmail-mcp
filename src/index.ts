@@ -1,5 +1,6 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, type ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { getAgentByName } from "agents";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
@@ -149,6 +150,10 @@ const inlineImageSchema = z.object({
 type InlineImageArg = z.infer<typeof inlineImageSchema>;
 
 const SEND_TOOLS = new Set(["send_message", "send_draft", "reply_all", "forward_message"]);
+
+// What a tool does to the mailbox. A client reads it as annotations, and a
+// sending tool is left out while sending is off.
+type ToolKind = "read" | "undoableWrite" | "destructive" | "sending";
 
 export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
@@ -328,6 +333,26 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 		if (!success) {
 			throw new Error("rate limit reached for this account; retry shortly");
 		}
+	}
+
+	// Sending is on only when the deployment sets ALLOW_SEND to exactly "true".
+	// Registration and the Gmail request path both ask here, at each use, so
+	// they never disagree with the settings or with each other.
+	protected sendingIsOn(): boolean {
+		throw new Error("sendingIsOn is not implemented");
+	}
+
+	// Every tool registers here with its kind, so none is listed without
+	// saying what it does to the mailbox, and a sending tool cannot be listed
+	// while sending is off.
+	protected registerByKind<Shape extends ZodRawShapeCompat>(_tool: {
+		kind: ToolKind;
+		name: string;
+		description: string;
+		inputSchema: Shape;
+		handler: ToolCallback<Shape>;
+	}): void {
+		throw new Error("registerByKind is not implemented");
 	}
 
 	private async api<T = GmailUnknown>(path: string, init: RequestInit = {}): Promise<T> {

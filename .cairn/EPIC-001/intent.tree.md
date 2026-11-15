@@ -271,6 +271,22 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: read in the files.
 - Used by: TASK-004, TASK-005, Impact.
 
+### FACT-020 One generic registration method keeps each handler's argument types
+
+- Observed: a method of `GmailMCP` taking one object `{ kind, name, description, inputSchema: Shape, handler: ToolCallback<Shape> }`, with `Shape extends ZodRawShapeCompat`, infers `Shape` from `inputSchema` and types the handler's arguments from it. A throwaway subclass called it with an empty shape and a handler of no argument, and with a shape of `z.string()`, `z.number().int().default(10)` and `z.string().optional()`, whose handler read its arguments as `string`, `number` and `string | undefined`. Both type-checked. A handler declaring `{ query: number }` for a `z.string()` field failed the type check.
+- Source: `GmailMCP.registerByKind` in `src/index.ts` as the sketch of PLAN-001 declares it; `ToolCallback` at `node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.d.ts:261` and `ZodRawShapeCompat` at `zod-compat.d.ts:5`, SDK 1.29.0; the probe was checked with `tsc --noEmit`, then removed.
+- Commit: 60bfc3d, with the sketch applied.
+- Certainty: ran.
+- Used by: the sketch of PLAN-001, WP-001, the risk "Handler arguments lose their types" of `design.md`.
+
+### FACT-021 The type check rejects unused private members and unread parameters
+
+- Observed: `tsconfig.json` sets `noUnusedLocals` and `noUnusedParameters`, and the `check` script runs `tsc --noEmit` after Biome. A private method that no code calls, or a parameter that no body reads, fails the gate.
+- Source: `tsconfig.json`; `package.json`, script `check`.
+- Commit: 60bfc3d.
+- Certainty: read in the files; the effect on private members is the documented behaviour of `noUnusedLocals`.
+- Used by: the sketch of PLAN-001, which declares its two methods of `GmailMCP` as `protected` and prefixes its unread parameters with `_`.
+
 ## Invocations
 
 ### Invocation 0
