@@ -16,6 +16,7 @@ import {
 	type GmailPart,
 	gmailFetch,
 	headerValue,
+	isSendingPath,
 	normalizeMessageId,
 	parseAddresses,
 	partCharset,
@@ -1502,5 +1503,47 @@ describe("adjacent encoded words", () => {
 			.split(/\r\n(?![ \t])/)
 			.find((l) => l.startsWith("Subject:"));
 		expect(decodeEncodedWords((header ?? "").slice("Subject: ".length))).toBe(subject);
+	});
+});
+
+describe("isSendingPath", () => {
+	const answers = (paths: string[]) => paths.map((path) => [path, isSendingPath(path)]);
+
+	test("names the paths that put mail on the wire, however they are spelled", () => {
+		expect(
+			answers([
+				"/messages/send",
+				"/drafts/send",
+				"/messages/send?uploadType=media",
+				"/drafts/abc/../send",
+				"/messages/%73end",
+			]),
+		).toEqual([
+			["/messages/send", true],
+			["/drafts/send", true],
+			["/messages/send?uploadType=media", true],
+			["/drafts/abc/../send", true],
+			["/messages/%73end", true],
+		]);
+	});
+
+	test("leaves every other Gmail path alone", () => {
+		expect(
+			answers([
+				"/messages/abc/modify",
+				"/messages/abc/trash",
+				"/drafts",
+				"/drafts/abc",
+				"/settings/sendAs",
+				"/messages/../send",
+			]),
+		).toEqual([
+			["/messages/abc/modify", false],
+			["/messages/abc/trash", false],
+			["/drafts", false],
+			["/drafts/abc", false],
+			["/settings/sendAs", false],
+			["/messages/../send", false],
+		]);
 	});
 });

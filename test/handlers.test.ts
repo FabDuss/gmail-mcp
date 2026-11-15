@@ -1371,3 +1371,45 @@ describe("sending is off unless the deployment enables it", () => {
 		expect(tools).toHaveLength(27);
 	});
 });
+
+describe("a sending tool called while sending is off", () => {
+	/**
+	 * Registers every tool while sending is on, then has the deployment's setting
+	 * read off, with a token already past its expiry so that a refresh would show.
+	 */
+	async function bootThenTurnSendingOff() {
+		const made = await boot();
+		(made.agent as { env: Record<string, string> }).env.ALLOW_SEND = "false";
+		(made.agent as { props: { expiresAt: number } }).props.expiresAt = 0;
+		return made;
+	}
+
+	test("send_message is refused with an error naming ALLOW_SEND, and nothing is requested", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([[/\/messages\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(
+			tool(handlers, "send_message")({ to: "a@example.com", subject: "s", body: "b" }),
+		).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("send_draft is refused with an error naming ALLOW_SEND, and nothing is requested", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([[/\/drafts\/send/, () => ({ id: "sent", threadId: "t1" })]]);
+		await expect(tool(handlers, "send_draft")({ draftId: "d1" })).rejects.toThrow(/ALLOW_SEND/);
+		expect(requests).toEqual([]);
+	});
+
+	test("create_draft still posts its draft to Gmail", async () => {
+		const { handlers } = await bootThenTurnSendingOff();
+		serveGmail([
+			[/\/profile/, () => ({ emailAddress: "me@example.com" })],
+			[/\/drafts$/, () => ({ id: "d1", message: { id: "dm1" } })],
+			[/oauth2\.googleapis\.com\/token/, () => ({ access_token: "fresh", expires_in: 3600 })],
+		]);
+		await tool(handlers, "create_draft")({ to: "a@example.com", subject: "s", body: "b" });
+		expect(
+			requests.some((r) => r.method === "POST" && r.url.endsWith("/gmail/v1/users/me/drafts")),
+		).toBe(true);
+	});
+});

@@ -125,8 +125,16 @@ export async function gmailFetch<T = unknown>(
 // messages.send and drafts.send alone. The path is judged as fetch will send
 // it, resolved against the base and with its escapes decoded, so that a dot
 // segment or an escaped letter cannot hide a send.
-export function isSendingPath(_path: string): boolean {
-	throw new Error("isSendingPath is not implemented");
+export function isSendingPath(path: string): boolean {
+	const prefix = new URL(BASE).pathname;
+	let resolved: string;
+	try {
+		resolved = decodeURIComponent(new URL(`${BASE}${path}`).pathname);
+	} catch {
+		// A path that does not parse is one fetch could not send either.
+		return false;
+	}
+	return resolved === `${prefix}/messages/send` || resolved === `${prefix}/drafts/send`;
 }
 
 // Chunked binary-to-base64: a spread into String.fromCharCode overflows the

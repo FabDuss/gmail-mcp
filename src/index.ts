@@ -26,6 +26,7 @@ import {
 	gmailFetch,
 	headerValue,
 	type InlineImage,
+	isSendingPath,
 	MAX_ENCODED_ATTACHMENT_BYTES,
 	normalizeMessageId,
 	parseAddresses,
@@ -370,7 +371,13 @@ export class GmailMCP extends McpAgent<Env, Record<string, never>, Props> {
 		);
 	}
 
+	// Every Gmail request passes here, so this is where a send is stopped while
+	// sending is off: a tool registered while it was on still cannot reach
+	// Gmail once the setting reads off, and nothing is refreshed or fetched first.
 	private async api<T = GmailUnknown>(path: string, init: RequestInit = {}): Promise<T> {
+		if (!this.sendingIsOn() && isSendingPath(path)) {
+			throw new Error("sending is off on this deployment; set ALLOW_SEND to true to allow it");
+		}
 		await this.assertSessionOwner();
 		await this.assertWithinRate();
 		try {
