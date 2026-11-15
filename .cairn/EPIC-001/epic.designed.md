@@ -17,3 +17,9 @@ The pilot confirmed the intent at invocation 0, with NEED-001 to NEED-008 and fo
 Run lost: architect
 
 The architect run launched on 2026-11-12 stopped on an API usage limit before it landed anything. Its worktree keeps `design.md`, `CONTEXT.md` and tree changes in progress. The session resumes it once.
+
+## 2026-11-15T12:28Z · architect · designed
+
+First design after ideation. `design.md` holds five TASKs: TASK-001 and TASK-002 carry the core, the tool list by kind and the refusal of sending on the Gmail request path, and TASK-003 to TASK-005 are mechanical. The design is short because the epic changes two places in one module, plus documentation. `CONTEXT.md` is new and carries the concepts of the intent. No ADR: no DEC is hard to reverse. FACT-010 to FACT-019 are in the tree.
+
+A rearrangement seen that spares no TASK: the session agent's start holds all 27 tool handlers inline in one long method. Moving them into modules by kind would make each tool easier to find, but it removes no TASK of this epic, so it is for the closing review.

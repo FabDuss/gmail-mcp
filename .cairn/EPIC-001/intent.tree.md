@@ -191,6 +191,86 @@ Empty. The stale test count (FACT-004, FACT-009) was not core to Q-001, and the 
 - Certainty: read in the files.
 - Used by: Q-006, fog.
 
+### FACT-010 registerTool takes the annotations and the list hands them to the client unchanged
+
+- Observed: `McpServer.registerTool(name, config, cb)` reads `title`, `description`, `inputSchema`, `outputSchema`, `annotations` and `_meta` from `config`. It builds the tool through the same internal function as the deprecated `tool()` overloads, so the call path, the duplicate-name error and the callback arguments are the same. `inputSchema` accepts a raw shape of Zod 4 schemas, and an empty shape gives the callback `(args, extra)`, as `tool()` does today. The `tools/list` handler returns each tool's `annotations` as given, without filling defaults. A throwaway script that registered three tools with `readOnlyHint` and `destructiveHint`, connected an SDK `Client` through the SDK's `InMemoryTransport`, and called `listTools()` printed each tool's annotations exactly as registered.
+- Source: `node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js:56-99,605-651,699-705`, `mcp.d.ts:150-157`, SDK 1.29.0; the script `/tmp/EPIC-001-architect-proof/annotations.ts`, run with bun 1.4.4.
+- Commit: dd97a37.
+- Certainty: read in the SDK, and ran.
+- Used by: DEC-002, TASK-001, Impact.
+
+### FACT-011 A tool handler that throws reaches the client as an error result
+
+- Observed: the SDK's `tools/call` handler catches any error from the handler and returns `{ content: [{ type: "text", text: <message> }], isError: true }`, not a JSON-RPC error. The same script's call to a handler that throws returned that result.
+- Source: `node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js:100-149`, SDK 1.29.0; `/tmp/EPIC-001-architect-proof/annotations.ts`.
+- Commit: dd97a37.
+- Certainty: read in the SDK, and ran.
+- Used by: TASK-002.
+
+### FACT-012 The agent framework leaves tool registration to the SDK
+
+- Observed: `McpAgent` in `agents` 0.17.4 awaits the subclass's `init()`, then connects `this.server` to its transport. It never calls, wraps or replaces `server.tool` or `server.registerTool`, and it installs no `tools/list` or `tools/call` handler.
+- Source: `node_modules/agents/dist/mcp/index.js`, `onStart` near lines 1500-1510; greps for `registerTool`, `.tool(`, `_registeredTools` and `setRequestHandler` in `agents/dist`.
+- Commit: dd97a37.
+- Certainty: read in the code, from targeted searches.
+- Used by: TASK-001, Impact.
+
+### FACT-013 Every Gmail request goes through GmailMCP.api
+
+- Observed: `gmailFetch` is the only code that fetches Gmail, and it prefixes every path with `https://gmail.googleapis.com/gmail/v1/users/me`. Its three calls are all inside `GmailMCP.api`, which runs `assertSessionOwner`, then `assertWithinRate`, then `token()`, then `gmailFetch`. A 401 retries after a forced token refresh. Other Google calls in `src/utils.ts` go to the OAuth token and userinfo endpoints only.
+- Source: `src/gmail.ts:6,66-82`; `src/index.ts:332-355`; `src/utils.ts:99,140,174`.
+- Commit: dd97a37.
+- Certainty: read in the code.
+- Used by: DEC-001, TASK-002, Impact.
+
+### FACT-014 The sending tools reach Gmail through two paths
+
+- Observed: `send_draft` posts to `/drafts/send`, and `send_message`, `reply_all` and `forward_message` post to `/messages/send`. No other path the code builds names a send method. The four tools are registered at `src/index.ts:1136,1309,1367,1404`.
+- Source: `src/index.ts:1140,1358,1395,1491`.
+- Commit: dd97a37.
+- Certainty: read in the code.
+- Used by: DEC-001, TASK-002.
+
+### FACT-015 Gmail's methods that deliver mail
+
+- Observed: Gmail API v1 describes two methods as sending a message to its recipients: `users.messages.send` ("Sends the specified message to the recipients in the To, Cc, and Bcc headers") and `users.drafts.send`, both `POST` on `.../messages/send` and `.../drafts/send`, with media upload variants under `/upload/` and `/resumable/upload/` at the host root. `messages.insert` and `messages.import` put a message in the user's own mailbox only, and `drafts.create` and `drafts.update` write drafts. Three settings methods mail a verification message, `forwardingAddresses.create`, `sendAs.create` and `sendAs.verify`, and all three are restricted to service accounts with domain-wide delegation.
+- Source: Gmail's discovery document, https://gmail.googleapis.com/$discovery/rest?version=v1. developers.google.com was unreachable from the search.
+- Date: read 2026-11-12.
+- Certainty: stated by the primary source for the two send methods; some other descriptions came back summarised rather than verbatim.
+- Used by: DEC-001, CONTEXT.md, Impact.
+
+### FACT-016 Dot segments resolve before a request leaves, percent escapes do not
+
+- Observed: with Gmail's base URL, the path `/drafts/abc/../send` resolves to `/gmail/v1/users/me/drafts/send`, and a local listener received a `fetch` to such a URL on that resolved path. The query string is not part of the resolved path. `/messages/%73end` keeps its escape after resolution. An id passed through `encodeURIComponent` cannot carry a `/`, but the id `..` passes through unchanged.
+- Source: `/tmp/EPIC-001-architect-proof/paths.ts`, run with bun 1.4.4, following the WHATWG URL parser that the Workers runtime also follows.
+- Date: run 2026-11-12.
+- Certainty: ran under bun; the Workers runtime is inferred to resolve the same way.
+- Used by: DEC-001, TASK-002.
+
+### FACT-017 How a setting reaches Env and survives a deploy
+
+- Observed: `wrangler types` (wrangler 4.114.0) builds `Env` from the config's `vars`, each typed as its literal and required, and from the keys of `.dev.vars` or `.env`, each typed `string` and required. It never reads `.dev.vars.example`. The committed `worker-configuration.d.ts` types the four secrets of `.dev.vars.example` as `string`. On `wrangler deploy`, a var in the config whose name matches a secret on the Worker triggers a warning and a confirmation, then the var replaces the secret. Without `keep_vars`, a deploy deletes the vars set outside the config, and a deploy never deletes a secret. `bun run setup` copies `wrangler.jsonc` once into `wrangler.local.jsonc`, which every later deploy reads through `.wrangler/deploy/config.json`, and puts `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS` and `COOKIE_ENCRYPTION_KEY` as secrets.
+- Source: `node_modules/wrangler/wrangler-dist/cli.js:210885-211268,143444-143551,144344-144354,221765,134869`; `scripts/setup.ts:89-127`; `worker-configuration.d.ts:1-27`; `.dev.vars.example`.
+- Commit: dd97a37.
+- Certainty: read in the code.
+- Used by: DEC-003, TASK-003.
+
+### FACT-018 The handler tests stub the server's tool method
+
+- Observed: `makeAgent` builds a `GmailMCP` through `Object.create(GmailMCP.prototype)` and sets `server` to an object whose only member is `tool(name, description, shape, cb)`, which stores the handler in a map. Its `env` sets `ALLOW_SEND: "true"`. The tests call the stored handlers directly, so a handler error arrives as a rejected promise. The describe block "sending is off unless the deployment enables it" counts 23 handlers without `ALLOW_SEND` and 27 with it. The SDK ships `InMemoryTransport` in `dist/esm/inMemory.js`.
+- Source: `test/handlers.test.ts:45-80,1264-1285`; `node_modules/@modelcontextprotocol/sdk/dist/esm/inMemory.js`.
+- Commit: dd97a37.
+- Certainty: read in the code.
+- Used by: TASK-001, TASK-002, Impact.
+
+### FACT-019 Where the docs list the tools and the settings
+
+- Observed: the "What it can do" table of `README.md:124-150` lists the four sending tools in its Write column with no condition, as do the same tables of `README.ja.md` and `README.zh.md` near line 128. `docs/index.html:117` says "27 tools" and is read by no script. Settings are documented in "Who can sign in" (`README.md:241-254`, `ALLOWED_EMAILS`) and in the "Limits" table (`README.md:256-275`, with `MAX_ACCOUNTS` as a `vars` entry of `wrangler.jsonc`). `lhm.plugin.json` lists the 27 tools, and nothing in CI reads it. `scripts/check-counts.py` matches only `badge/tools-(\d+)-` in the three READMEs for tools.
+- Source: those lines; `scripts/check-counts.py:28-34`.
+- Commit: dd97a37.
+- Certainty: read in the files.
+- Used by: TASK-004, TASK-005, Impact.
+
 ## Invocations
 
 ### Invocation 0
