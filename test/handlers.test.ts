@@ -1279,12 +1279,17 @@ describe("forwarding a long message", () => {
 });
 
 /** What a client connected to the agent in process sees when it lists the tools. */
-async function listTools(env: Record<string, string>) {
+async function connectClient(env: Record<string, string>) {
 	const server = new McpServer({ name: "Gmail MCP", version: "0.0.0" });
 	await start(makeAgent({ server, env }));
 	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
 	const client = new Client({ name: "test client", version: "0.0.0" });
 	await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+	return client;
+}
+
+async function listTools(env: Record<string, string>) {
+	const client = await connectClient(env);
 	const { tools } = await client.listTools();
 	await client.close();
 	return tools;
@@ -1343,6 +1348,49 @@ describe("a client lists the tools with the annotations of their kind", () => {
 			expect(annotations?.readOnlyHint).toBe(false);
 			expect(annotations?.destructiveHint).toBe(true);
 		}
+	});
+
+	test("each undoable write carries exactly those two hints", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		for (const name of UNDOABLE_WRITES) {
+			expect(annotationsOf(tools, name)).toEqual({ readOnlyHint: false, destructiveHint: false });
+		}
+	});
+
+	test("no tool carries an idempotent or open-world hint", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(tools).toHaveLength(27);
+		for (const tool of tools) {
+			expect(tool.annotations).not.toHaveProperty("idempotentHint");
+			expect(tool.annotations).not.toHaveProperty("openWorldHint");
+		}
+	});
+});
+
+describe("a client lists each tool with its own description and input schema", () => {
+	const find = (tools: Awaited<ReturnType<typeof listTools>>, name: string) =>
+		tools.find((t) => t.name === name);
+
+	test("whoami and list_labels each list their own description", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(find(tools, "whoami")?.description).toBe(
+			"Show which Gmail account this connection is bound to (me@example.com)",
+		);
+		expect(find(tools, "list_labels")?.description).toBe("List labels in me@example.com");
+	});
+
+	test("search_messages lists an input schema that requires query, and whoami lists an empty one", async () => {
+		const tools = await listTools({ ALLOW_SEND: "true" });
+		expect(find(tools, "search_messages")?.inputSchema.required).toEqual(["query"]);
+		expect(find(tools, "whoami")?.inputSchema.properties ?? {}).toEqual({});
+	});
+
+	test("a call of search_messages without query is refused", async () => {
+		const client = await connectClient({ ALLOW_SEND: "true" });
+		const reply = await client.callTool({ name: "search_messages", arguments: {} });
+		await client.close();
+		expect(reply.isError).toBe(true);
+		expect(JSON.stringify(reply.content)).toContain("Invalid arguments for tool search_messages");
 	});
 });
 
