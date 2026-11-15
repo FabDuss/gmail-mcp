@@ -1379,8 +1379,18 @@ describe("a sending tool called while sending is off", () => {
 	 */
 	async function bootThenTurnSendingOff() {
 		const made = await boot();
-		(made.agent as { env: Record<string, string> }).env.ALLOW_SEND = "false";
-		(made.agent as { props: { expiresAt: number } }).props.expiresAt = 0;
+		made.agent.env = {
+			GOOGLE_CLIENT_ID: "id",
+			GOOGLE_CLIENT_SECRET: "secret",
+			ALLOW_SEND: "false",
+		};
+		made.agent.props = {
+			email: "me@example.com",
+			name: "Tester",
+			accessToken: "access-token",
+			refreshToken: "refresh-token",
+			expiresAt: 0,
+		};
 		return made;
 	}
 
