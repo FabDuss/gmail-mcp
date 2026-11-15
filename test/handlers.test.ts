@@ -45,7 +45,15 @@ function serveGmail(routes: [RegExp, Route][]) {
 	}) as unknown as typeof fetch;
 }
 
-function makeAgent(email = "me@example.com", server?: McpServer) {
+function makeAgent({
+	email = "me@example.com",
+	server,
+	env = { ALLOW_SEND: "true" },
+}: {
+	email?: string | undefined;
+	server?: McpServer;
+	env?: Record<string, string>;
+} = {}) {
 	const handlers = new Map<string, Handler>();
 	const storage = new Map<string, unknown>();
 	const agent = Object.create(GmailMCP.prototype) as Record<string, unknown>;
@@ -75,14 +83,18 @@ function makeAgent(email = "me@example.com", server?: McpServer) {
 			},
 		},
 	};
-	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", ALLOW_SEND: "true" };
+	agent.env = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", ...env };
 	return { agent, handlers, storage };
 }
 
-async function boot(email?: string) {
-	const made = makeAgent(email);
+/** Runs the agent's start, which registers its tools. */
+async function start(made: ReturnType<typeof makeAgent>) {
 	await (made.agent as { init: () => Promise<void> }).init();
 	return made;
+}
+
+async function boot(email?: string) {
+	return start(makeAgent({ email }));
 }
 
 /** A handler that must exist, so a missing one fails loudly rather than quietly. */
@@ -174,7 +186,7 @@ describe("a session started by the wrong grant", () => {
 	// not own the session must not be the one to do it: otherwise the owner's
 	// own calls fail for as long as the object lives.
 	test("refuses to start, and starts for the owner afterwards", async () => {
-		const made = makeAgent("intruder@example.com");
+		const made = makeAgent({ email: "intruder@example.com" });
 		made.storage.set("owner", "owner@example.com");
 		await expect((made.agent as { init: () => Promise<void> }).init()).rejects.toThrow(
 			/different Google account/,
@@ -1269,13 +1281,7 @@ describe("forwarding a long message", () => {
 /** What a client connected to the agent in process sees when it lists the tools. */
 async function listTools(env: Record<string, string>) {
 	const server = new McpServer({ name: "Gmail MCP", version: "0.0.0" });
-	const made = makeAgent("me@example.com", server);
-	(made.agent as { env: Record<string, string> }).env = {
-		GOOGLE_CLIENT_ID: "id",
-		GOOGLE_CLIENT_SECRET: "secret",
-		...env,
-	};
-	await (made.agent as { init: () => Promise<void> }).init();
+	await start(makeAgent({ server, env }));
 	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
 	const client = new Client({ name: "test client", version: "0.0.0" });
 	await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
