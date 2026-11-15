@@ -87,3 +87,21 @@ The Impact gains FACT-027, ran: the check's fix rewrites exactly the nine claims
 PLAN-002 The READMEs state the test count the suite runs, composed after the barrier of PLAN-001 from TASK-006, the only TASK the revision added. It is short because it rewrites nine numbers in three READMEs. `plan.md` carries the order: WP-004 The CI count check passes on the three READMEs, trivial, opens alone and closes NEED-009. Every work-package that adds a test is `hardened`, so WP-004 lands after all of them, as TASK-006 asks. No TASK is left for a next plan.
 
 The sketch is empty: TASK-006 names no interface, type or seam in the code. FACT-027 still holds, since no file outside `.cairn/` moved between 6ee2fd3 and the epic head 1693986; the count check run there prints the same nine failing lines, 253 claimed against 275 run, none about tools.
+
+## 2026-11-15T15:06Z · session · closing
+
+Barrier of PLAN-002-test-count, the last barrier: `plan.md` leaves no TASK. WP-004 is hardened, and every NEED of the intent is closed by a validated work-package. Main was already in the epic branch. Gates at 7e7678a, the full suite: `bun run check` exit 0, `bun test` 275 pass 0 fail, `scripts/check-counts.py` "ok   tool and test counts match the source", exit 0. `baseline.md` is empty. The render check needs a GitHub token absent here and runs in CI on the PR. No new architecture critique: the entry of 2026-11-15T13:07Z carries its proposals, and only README text landed since.
+
+Observed at 7e7678a.
+
+- NEED-001 Read tools are marked read-only: not observed, accepted by the pilot on the gates; server code unchanged since 739a49d. FACT-023, FACT-029
+- NEED-002 Undoable writes are marked non-destructive: not observed, accepted by the pilot on the gates. FACT-023, FACT-029
+- NEED-003 Destructive tools stay destructive: not observed, accepted by the pilot on the gates. FACT-023, FACT-029
+- NEED-004 Sending tools are absent while sending is off: not observed, accepted by the pilot on the gates. FACT-023, FACT-029
+- NEED-005 Sending is refused while sending is off: observable by nobody, judged on the gates. FACT-023, FACT-029
+- NEED-006 Sending works when enabled: observable by nobody here, judged on the gates. FACT-023, FACT-029
+- NEED-007 The README gives only revocation paths that work: holds, observed by the session. FACT-025, FACT-029
+- NEED-008 The docs state the tool count and the setting that gates sending: holds, observed by the session. FACT-024, FACT-026, FACT-029
+- NEED-009 The docs state the test count the suite runs: holds, observed by the session. FACT-028
+
+The pilot accepted the observation with "J accepte". No closing item is open: the decisions of the PLAN-001 barrier stand.
