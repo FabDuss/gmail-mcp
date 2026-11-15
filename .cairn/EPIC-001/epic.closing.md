@@ -47,3 +47,24 @@ Beside it, for the closing review:
 
 - The architect's rearrangement in its `designed` entry: move the 27 tool handlers out of `GmailMCP.init` into modules by kind.
 - The test-count claims of the three READMEs, out of scope since round 2 of ideation and known red in `baseline.md` (253 claimed, 275 run at 739a49d). The CI step "Tool and test counts match the source" fails on them.
+
+## 2026-11-15T14:13Z · session · closing
+
+Barrier of PLAN-001-send-safeguards, the last barrier: `plan.md` leaves no TASK. Every work-package is hardened. Every NEED of the intent is closed by a validated work-package. Main was already in the epic branch. Gates at 739a49d, the full suite: `bun run check` exit 0, `bun test` 275 pass 0 fail, `scripts/check-counts.py` failing only on the test-count claims known red in `baseline.md`.
+
+Observed at 739a49d.
+
+- NEED-001 Read tools are marked read-only: not observed; it needs a Google sign-in this environment cannot complete (FACT-023). The pilot accepted it on the gates without reporting an observation. FACT-023
+- NEED-002 Undoable writes are marked non-destructive: not observed, accepted by the pilot on the gates. FACT-023
+- NEED-003 Destructive tools stay destructive: not observed, accepted by the pilot on the gates. FACT-023
+- NEED-004 Sending tools are absent while sending is off: not observed, accepted by the pilot on the gates. FACT-023
+- NEED-005 Sending is refused while sending is off: observable by nobody, judged on the gates; with sending off no user path reaches a sending request. FACT-023
+- NEED-006 Sending works when enabled: observable by nobody here, judged on the gates; the pilot keeps sending off. FACT-023
+- NEED-007 The README gives only revocation paths that work: holds, observed by the session. FACT-025
+- NEED-008 The docs state the tool count and the setting that gates sending: holds, observed by the session. FACT-024, FACT-026
+
+The pilot accepted the observation and the session's closing recommendations with "J accepte tes recommandations". Closing decisions:
+
+- Handler tests through the in-process MCP client (the critique's proposal): rejected.
+- Moving the 27 tool handlers out of `GmailMCP.init` by kind (the architect's rearrangement): rejected.
+- The test-count claims of the three READMEs: fixed in this epic. The session sends it to the architect by `confirmed`, after a re-invocation of the intent, since the intent had it out of scope.
